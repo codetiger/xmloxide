@@ -260,7 +260,7 @@ fn read_input(filename: &str) -> io::Result<String> {
 // ---------------------------------------------------------------------------
 
 /// Parses input as XML with the configured options.
-fn parse_as_xml(cli: &Cli, input: &str) -> Result<Document, String> {
+fn parse_as_xml<'a>(cli: &Cli, input: &'a str) -> Result<Document<'a>, String> {
     let opts = ParseOptions::default()
         .recover(cli.recover)
         .no_blanks(cli.noblanks);
@@ -268,7 +268,7 @@ fn parse_as_xml(cli: &Cli, input: &str) -> Result<Document, String> {
 }
 
 /// Parses input as HTML with the configured options.
-fn parse_as_html(cli: &Cli, input: &str) -> Result<Document, String> {
+fn parse_as_html<'a>(cli: &Cli, input: &'a str) -> Result<Document<'a>, String> {
     let opts = xmloxide::html::HtmlParseOptions::default()
         .recover(cli.recover)
         .no_blanks(cli.noblanks);
@@ -280,7 +280,7 @@ fn parse_as_html(cli: &Cli, input: &str) -> Result<Document, String> {
 // ---------------------------------------------------------------------------
 
 /// Validates a document against its internal DTD (--valid).
-fn validate_dtd_internal(filename: &str, doc: &mut Document) -> u8 {
+fn validate_dtd_internal(filename: &str, doc: &mut Document<'_>) -> u8 {
     let dtd_text = extract_internal_dtd_subset(doc);
     if dtd_text.is_empty() {
         eprintln!("{filename}: no DTD found for validation");
@@ -300,7 +300,7 @@ fn validate_dtd_internal(filename: &str, doc: &mut Document) -> u8 {
 }
 
 /// Validates a document against an external DTD file (--dtdvalid).
-fn validate_dtd_external(filename: &str, doc: &mut Document, dtd_file: &str) -> u8 {
+fn validate_dtd_external(filename: &str, doc: &mut Document<'_>, dtd_file: &str) -> u8 {
     let dtd_content = match fs::read_to_string(dtd_file) {
         Ok(content) => content,
         Err(e) => {
@@ -322,7 +322,7 @@ fn validate_dtd_external(filename: &str, doc: &mut Document, dtd_file: &str) -> 
 }
 
 /// Validates a document against a `RelaxNG` schema file (--relaxng).
-fn validate_relaxng_file(filename: &str, doc: &Document, rng_file: &str) -> u8 {
+fn validate_relaxng_file(filename: &str, doc: &Document<'_>, rng_file: &str) -> u8 {
     let schema_content = match fs::read_to_string(rng_file) {
         Ok(content) => content,
         Err(e) => {
@@ -344,7 +344,7 @@ fn validate_relaxng_file(filename: &str, doc: &Document, rng_file: &str) -> u8 {
 }
 
 /// Validates a document against an XML Schema (XSD) file (--schema).
-fn validate_xsd_file(filename: &str, doc: &Document, xsd_file: &str) -> u8 {
+fn validate_xsd_file(filename: &str, doc: &Document<'_>, xsd_file: &str) -> u8 {
     let schema_content = match fs::read_to_string(xsd_file) {
         Ok(content) => content,
         Err(e) => {
@@ -387,7 +387,7 @@ fn print_validation_result(filename: &str, result: &xmloxide::validation::Valida
 // ---------------------------------------------------------------------------
 
 /// Evaluates an `XPath` expression and prints the result to stdout.
-fn evaluate_xpath(filename: &str, doc: &Document, expression: &str) {
+fn evaluate_xpath(filename: &str, doc: &Document<'_>, expression: &str) {
     let context_node = doc.root_element().unwrap_or_else(|| doc.root());
 
     match xpath::evaluate(doc, context_node, expression) {
@@ -415,14 +415,14 @@ fn evaluate_xpath(filename: &str, doc: &Document, expression: &str) {
 }
 
 /// Serializes a single node and its subtree to XML.
-fn serialize_subtree(doc: &Document, node_id: NodeId) -> String {
+fn serialize_subtree(doc: &Document<'_>, node_id: NodeId) -> String {
     let mut output = String::new();
     serialize_node_recursive(doc, node_id, &mut output);
     output
 }
 
 /// Recursively serializes a node to a string (for `XPath` output).
-fn serialize_node_recursive(doc: &Document, id: NodeId, out: &mut String) {
+fn serialize_node_recursive(doc: &Document<'_>, id: NodeId, out: &mut String) {
     match &doc.node(id).kind {
         NodeKind::Element {
             name,
@@ -499,7 +499,7 @@ fn serialize_node_recursive(doc: &Document, id: NodeId, out: &mut String) {
 // ---------------------------------------------------------------------------
 
 /// Serializes a document to string using the configured output mode.
-fn serialize_document(cli: &Cli, doc: &Document) -> String {
+fn serialize_document(cli: &Cli, doc: &Document<'_>) -> String {
     if cli.c14n || cli.exc_c14n {
         let opts = C14nOptions {
             with_comments: true,
@@ -699,7 +699,7 @@ fn update_encoding_declaration(xml: &str, new_encoding: &str) -> String {
 ///
 /// The format resembles libxml2's `--debug` output: each node is printed
 /// with its type and content, indented to show the tree structure.
-fn format_debug_tree(doc: &Document) -> String {
+fn format_debug_tree(doc: &Document<'_>) -> String {
     let mut output = String::new();
     output.push_str("DOCUMENT\n");
     for child in doc.children(doc.root()) {
@@ -709,7 +709,7 @@ fn format_debug_tree(doc: &Document) -> String {
 }
 
 /// Recursively formats a node for debug output.
-fn format_debug_node(doc: &Document, id: NodeId, depth: usize, out: &mut String) {
+fn format_debug_node(doc: &Document<'_>, id: NodeId, depth: usize, out: &mut String) {
     let indent: String = "  ".repeat(depth);
 
     match &doc.node(id).kind {
@@ -721,7 +721,7 @@ fn format_debug_node(doc: &Document, id: NodeId, depth: usize, out: &mut String)
         } => {
             let qname = match prefix {
                 Some(pfx) => format!("{pfx}:{name}"),
-                None => name.clone(),
+                None => name.to_string(),
             };
             out.push_str(&indent);
             out.push_str("ELEMENT ");
@@ -832,7 +832,7 @@ fn write_output(cli: &Cli, content: &str) {
 /// Looks for a `DocumentType` node and attempts to extract a minimal DTD from
 /// the document's content model. This is a best-effort approach -- a full
 /// implementation would capture the internal subset during parsing.
-fn extract_internal_dtd_subset(doc: &Document) -> String {
+fn extract_internal_dtd_subset(doc: &Document<'_>) -> String {
     // Walk the document's top-level children looking for a DocumentType node.
     for child in doc.children(doc.root()) {
         if matches!(doc.node(child).kind, NodeKind::DocumentType { .. }) {

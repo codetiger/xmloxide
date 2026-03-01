@@ -20,7 +20,7 @@ use super::{clear_last_error, set_last_error};
 ///
 /// `input` must be a valid null-terminated UTF-8 string.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_parse_str(input: *const c_char) -> *mut Document {
+pub unsafe extern "C" fn xmloxide_parse_str(input: *const c_char) -> *mut Document<'static> {
     clear_last_error();
     if input.is_null() {
         set_last_error("null input pointer");
@@ -36,7 +36,7 @@ pub unsafe extern "C" fn xmloxide_parse_str(input: *const c_char) -> *mut Docume
         }
     };
     match Document::parse_str(s) {
-        Ok(doc) => Box::into_raw(Box::new(doc)),
+        Ok(doc) => Box::into_raw(Box::new(doc.into_static())),
         Err(e) => {
             set_last_error(&e.message);
             std::ptr::null_mut()
@@ -55,7 +55,10 @@ pub unsafe extern "C" fn xmloxide_parse_str(input: *const c_char) -> *mut Docume
 ///
 /// `data` must point to `len` valid bytes.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_parse_bytes(data: *const u8, len: usize) -> *mut Document {
+pub unsafe extern "C" fn xmloxide_parse_bytes(
+    data: *const u8,
+    len: usize,
+) -> *mut Document<'static> {
     clear_last_error();
     if data.is_null() {
         set_last_error("null data pointer");
@@ -81,7 +84,7 @@ pub unsafe extern "C" fn xmloxide_parse_bytes(data: *const u8, len: usize) -> *m
 /// `doc` must have been returned by `xmloxide_parse_str` or
 /// `xmloxide_parse_bytes`, or be null.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_free_doc(doc: *mut Document) {
+pub unsafe extern "C" fn xmloxide_free_doc(doc: *mut Document<'static>) {
     if !doc.is_null() {
         // SAFETY: `doc` was created by `Box::into_raw` in a parse function, and is non-null.
         unsafe {
@@ -99,7 +102,7 @@ pub unsafe extern "C" fn xmloxide_free_doc(doc: *mut Document) {
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_doc_version(doc: *const Document) -> *mut c_char {
+pub unsafe extern "C" fn xmloxide_doc_version(doc: *const Document<'static>) -> *mut c_char {
     if doc.is_null() {
         return std::ptr::null_mut();
     }
@@ -120,7 +123,7 @@ pub unsafe extern "C" fn xmloxide_doc_version(doc: *const Document) -> *mut c_ch
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_doc_encoding(doc: *const Document) -> *mut c_char {
+pub unsafe extern "C" fn xmloxide_doc_encoding(doc: *const Document<'static>) -> *mut c_char {
     if doc.is_null() {
         return std::ptr::null_mut();
     }
@@ -141,7 +144,7 @@ pub unsafe extern "C" fn xmloxide_doc_encoding(doc: *const Document) -> *mut c_c
 ///
 /// `input` must be a valid null-terminated UTF-8 string.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_parse_html(input: *const c_char) -> *mut Document {
+pub unsafe extern "C" fn xmloxide_parse_html(input: *const c_char) -> *mut Document<'static> {
     clear_last_error();
     if input.is_null() {
         set_last_error("null input pointer");
@@ -157,7 +160,7 @@ pub unsafe extern "C" fn xmloxide_parse_html(input: *const c_char) -> *mut Docum
         }
     };
     match crate::html::parse_html(s) {
-        Ok(doc) => Box::into_raw(Box::new(doc)),
+        Ok(doc) => Box::into_raw(Box::new(doc.into_static())),
         Err(e) => {
             set_last_error(&e.message);
             std::ptr::null_mut()
@@ -174,7 +177,7 @@ pub unsafe extern "C" fn xmloxide_parse_html(input: *const c_char) -> *mut Docum
 ///
 /// `path` must be a valid null-terminated UTF-8 string.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_parse_file(path: *const c_char) -> *mut Document {
+pub unsafe extern "C" fn xmloxide_parse_file(path: *const c_char) -> *mut Document<'static> {
     clear_last_error();
     if path.is_null() {
         set_last_error("null path pointer");

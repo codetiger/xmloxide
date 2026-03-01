@@ -33,7 +33,7 @@ use crate::tree::{Document, NodeId, NodeKind};
 /// assert!(html.contains("<p>"));
 /// ```
 #[must_use]
-pub fn serialize_html(doc: &Document) -> String {
+pub fn serialize_html(doc: &Document<'_>) -> String {
     let mut output = String::new();
 
     // Detect whether the document declares UTF-8 charset.
@@ -63,7 +63,7 @@ pub fn serialize_html(doc: &Document) -> String {
 /// When the charset is UTF-8, non-ASCII characters are preserved as raw
 /// UTF-8 in the output. Otherwise (default ISO-8859-1 for HTML), they
 /// are re-encoded as named HTML entities.
-fn detect_utf8_charset(doc: &Document) -> bool {
+fn detect_utf8_charset(doc: &Document<'_>) -> bool {
     let root = doc.root();
     for id in doc.children(root) {
         if check_meta_charset(doc, id) {
@@ -74,7 +74,7 @@ fn detect_utf8_charset(doc: &Document) -> bool {
 }
 
 /// Recursively checks an element subtree for meta charset declarations.
-fn check_meta_charset(doc: &Document, id: NodeId) -> bool {
+fn check_meta_charset(doc: &Document<'_>, id: NodeId) -> bool {
     if let NodeKind::Element {
         name, attributes, ..
     } = &doc.node(id).kind
@@ -169,7 +169,7 @@ fn is_text_like(kind: &NodeKind) -> bool {
 /// - Element name does not start with 'p' (p, pre, param)
 /// - First child is not a text-like node
 /// - Element has more than one child
-fn maybe_newline_after_open(doc: &Document, id: NodeId, tag: &str, out: &mut String) {
+fn maybe_newline_after_open(doc: &Document<'_>, id: NodeId, tag: &str, out: &mut String) {
     if is_inline_element(tag) || tag.starts_with('p') {
         return;
     }
@@ -194,7 +194,7 @@ fn maybe_newline_after_open(doc: &Document, id: NodeId, tag: &str, out: &mut Str
 /// - Element name does not start with 'p' (p, pre, param)
 /// - Last child is not a text-like node
 /// - Element has more than one child
-fn maybe_newline_before_close(doc: &Document, id: NodeId, tag: &str, out: &mut String) {
+fn maybe_newline_before_close(doc: &Document<'_>, id: NodeId, tag: &str, out: &mut String) {
     if is_inline_element(tag) || tag.starts_with('p') {
         return;
     }
@@ -221,7 +221,7 @@ fn maybe_newline_before_close(doc: &Document, id: NodeId, tag: &str, out: &mut S
 /// - Element is not inline
 /// - Next sibling exists and is not a text-like node
 /// - Parent element name does not start with 'p'
-fn maybe_newline_after_close(doc: &Document, id: NodeId, tag: &str, out: &mut String) {
+fn maybe_newline_after_close(doc: &Document<'_>, id: NodeId, tag: &str, out: &mut String) {
     if is_inline_element(tag) {
         return;
     }
@@ -241,7 +241,7 @@ fn maybe_newline_after_close(doc: &Document, id: NodeId, tag: &str, out: &mut St
 }
 
 #[allow(clippy::too_many_lines)]
-fn serialize_html_node(doc: &Document, id: NodeId, out: &mut String, reencode: bool) {
+fn serialize_html_node(doc: &Document<'_>, id: NodeId, out: &mut String, reencode: bool) {
     match &doc.node(id).kind {
         NodeKind::Element {
             name,
@@ -524,6 +524,7 @@ fn write_html_escaped_attr(out: &mut String, text: &str, reencode: bool) {
 mod tests {
     use super::*;
     use crate::html::parse_html;
+    use std::borrow::Cow;
 
     // -- Void elements -------------------------------------------------------
 
@@ -730,21 +731,21 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let html_id = doc.create_node(NodeKind::Element {
-            name: "html".to_string(),
+            name: Cow::Owned("html".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         doc.append_child(root, html_id);
         let body_id = doc.create_node(NodeKind::Element {
-            name: "body".to_string(),
+            name: Cow::Owned("body".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         doc.append_child(html_id, body_id);
         let entity_id = doc.create_node(NodeKind::EntityRef {
-            name: "nbsp".to_string(),
+            name: Cow::Owned("nbsp".to_string()),
             value: None,
         });
         doc.append_child(body_id, entity_id);
@@ -792,26 +793,26 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let html_id = doc.create_node(NodeKind::Element {
-            name: "html".to_string(),
+            name: Cow::Owned("html".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         doc.append_child(root, html_id);
         let body_id = doc.create_node(NodeKind::Element {
-            name: "body".to_string(),
+            name: Cow::Owned("body".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         doc.append_child(html_id, body_id);
         let div_id = doc.create_node(NodeKind::Element {
-            name: "div".to_string(),
+            name: Cow::Owned("div".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![crate::tree::Attribute {
-                name: "title".to_string(),
-                value: "say \"hello\"".to_string(),
+                name: Cow::Owned("title".to_string()),
+                value: Cow::Owned("say \"hello\"".to_string()),
                 prefix: None,
                 namespace: None,
                 raw_value: None,

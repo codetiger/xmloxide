@@ -8,7 +8,7 @@
 use xmloxide::serial::serialize;
 use xmloxide::Document;
 
-fn parse_and_roundtrip(input: &str) -> Document {
+fn parse_and_roundtrip(input: &str) -> Document<'_> {
     let doc = Document::parse_str(input).unwrap_or_else(|e| panic!("parse failed: {e}"));
     // Roundtrip: serialize and re-parse
     let output = serialize(&doc);

@@ -33,7 +33,7 @@ pub const XMLOXIDE_XPATH_STRING: i32 = 4;
 /// id within the document (use 0 to use the document root).
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_xpath_eval(
-    doc: *const Document,
+    doc: *const Document<'static>,
     context_node: u32,
     expr: *const c_char,
 ) -> *mut XPathValue {

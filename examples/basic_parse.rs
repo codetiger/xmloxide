@@ -39,7 +39,7 @@ fn main() {
             let category = attributes
                 .iter()
                 .find(|a| a.name == "category")
-                .map_or("unknown", |a| a.value.as_str());
+                .map_or("unknown", |a| &*a.value);
             println!("\n<{name}> (category={category})");
 
             // Print child elements

@@ -175,7 +175,7 @@ impl PushParser {
     /// parser.push(b"<root><child/></root>");
     /// let doc = parser.finish().unwrap();
     /// ```
-    pub fn finish(mut self) -> Result<Document, ParseError> {
+    pub fn finish(mut self) -> Result<Document<'static>, ParseError> {
         self.finished = true;
 
         let utf8 = decode_to_utf8(&self.buffer).map_err(|e| ParseError {
@@ -184,7 +184,7 @@ impl PushParser {
             diagnostics: Vec::new(),
         })?;
 
-        crate::parser::parse_str_with_options(&utf8, &self.options)
+        crate::parser::parse_str_with_options(&utf8, &self.options).map(Document::into_static)
     }
 
     /// Returns the number of bytes currently buffered.

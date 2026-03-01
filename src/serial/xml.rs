@@ -64,7 +64,7 @@ impl SerializeOptions {
 /// assert!(xml.contains("<root>"));
 /// ```
 #[must_use]
-pub fn serialize(doc: &Document) -> String {
+pub fn serialize(doc: &Document<'_>) -> String {
     serialize_with_options(doc, &SerializeOptions::default())
 }
 
@@ -84,7 +84,7 @@ pub fn serialize(doc: &Document) -> String {
 /// assert!(xml.contains("  <child>"));
 /// ```
 #[must_use]
-pub fn serialize_with_options(doc: &Document, options: &SerializeOptions) -> String {
+pub fn serialize_with_options(doc: &Document<'_>, options: &SerializeOptions) -> String {
     let mut output = String::new();
 
     // XML declaration — always emit, defaulting to version 1.0 (matches libxml2)
@@ -129,7 +129,7 @@ pub fn serialize_with_options(doc: &Document, options: &SerializeOptions) -> Str
 
 /// Returns `true` if the element contains only other elements (and optional
 /// whitespace text), meaning it's safe to add indentation.
-fn is_element_only(doc: &Document, id: NodeId) -> bool {
+fn is_element_only(doc: &Document<'_>, id: NodeId) -> bool {
     let mut has_element_child = false;
     for child in doc.children(id) {
         match &doc.node(child).kind {
@@ -148,7 +148,7 @@ fn is_element_only(doc: &Document, id: NodeId) -> bool {
 
 #[allow(clippy::too_many_lines)]
 fn serialize_node(
-    doc: &Document,
+    doc: &Document<'_>,
     id: NodeId,
     out: &mut String,
     reencode_non_ascii: bool,
@@ -542,13 +542,14 @@ fn write_escaped_attr(out: &mut String, text: &str, reencode_non_ascii: bool) {
 mod tests {
     use super::*;
     use crate::tree::Attribute;
+    use std::borrow::Cow;
 
     #[test]
     fn test_serialize_empty_element() {
         let mut doc = Document::new();
         let root = doc.root();
         let elem = doc.create_node(NodeKind::Element {
-            name: "br".to_string(),
+            name: Cow::Owned("br".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -562,13 +563,13 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let elem = doc.create_node(NodeKind::Element {
-            name: "p".to_string(),
+            name: Cow::Owned("p".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         let text = doc.create_node(NodeKind::Text {
-            content: "Hello".to_string(),
+            content: Cow::Owned("Hello".to_string()),
         });
         doc.append_child(root, elem);
         doc.append_child(elem, text);
@@ -580,20 +581,20 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let elem = doc.create_node(NodeKind::Element {
-            name: "div".to_string(),
+            name: Cow::Owned("div".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![
                 Attribute {
-                    name: "id".to_string(),
-                    value: "main".to_string(),
+                    name: Cow::Owned("id".to_string()),
+                    value: Cow::Owned("main".to_string()),
                     prefix: None,
                     namespace: None,
                     raw_value: None,
                 },
                 Attribute {
-                    name: "class".to_string(),
-                    value: "big".to_string(),
+                    name: Cow::Owned("class".to_string()),
+                    value: Cow::Owned("big".to_string()),
                     prefix: None,
                     namespace: None,
                     raw_value: None,
@@ -612,13 +613,13 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let elem = doc.create_node(NodeKind::Element {
-            name: "p".to_string(),
+            name: Cow::Owned("p".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         let text = doc.create_node(NodeKind::Text {
-            content: "a < b & c > d".to_string(),
+            content: Cow::Owned("a < b & c > d".to_string()),
         });
         doc.append_child(root, elem);
         doc.append_child(elem, text);
@@ -633,7 +634,7 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let comment = doc.create_node(NodeKind::Comment {
-            content: " a comment ".to_string(),
+            content: Cow::Owned(" a comment ".to_string()),
         });
         doc.append_child(root, comment);
         assert_eq!(
@@ -647,13 +648,13 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let elem = doc.create_node(NodeKind::Element {
-            name: "script".to_string(),
+            name: Cow::Owned("script".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         let cdata = doc.create_node(NodeKind::CData {
-            content: "x < 1 && y > 2".to_string(),
+            content: Cow::Owned("x < 1 && y > 2".to_string()),
         });
         doc.append_child(root, elem);
         doc.append_child(elem, cdata);
@@ -668,8 +669,10 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let pi = doc.create_node(NodeKind::ProcessingInstruction {
-            target: "xml-stylesheet".to_string(),
-            data: Some("type=\"text/css\" href=\"style.css\"".to_string()),
+            target: Cow::Owned("xml-stylesheet".to_string()),
+            data: Some(Cow::Owned(
+                "type=\"text/css\" href=\"style.css\"".to_string(),
+            )),
         });
         doc.append_child(root, pi);
         assert_eq!(
@@ -681,11 +684,11 @@ mod tests {
     #[test]
     fn test_serialize_xml_declaration() {
         let mut doc = Document::new();
-        doc.version = Some("1.0".to_string());
-        doc.encoding = Some("UTF-8".to_string());
+        doc.version = Some(Cow::Owned("1.0".to_string()));
+        doc.encoding = Some(Cow::Owned("UTF-8".to_string()));
         let root = doc.root();
         let elem = doc.create_node(NodeKind::Element {
-            name: "root".to_string(),
+            name: Cow::Owned("root".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -702,12 +705,12 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let elem = doc.create_node(NodeKind::Element {
-            name: "a".to_string(),
+            name: Cow::Owned("a".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![Attribute {
-                name: "title".to_string(),
-                value: "He said \"hello\" & <bye>".to_string(),
+                name: Cow::Owned("title".to_string()),
+                value: Cow::Owned("He said \"hello\" & <bye>".to_string()),
                 prefix: None,
                 namespace: None,
                 raw_value: None,

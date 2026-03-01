@@ -498,9 +498,9 @@ mod tests {
 
     /// Helper to create a `NodeId` for testing purposes by allocating a real
     /// node in a document arena.
-    fn make_node_id_in_doc(doc: &mut Document) -> NodeId {
+    fn make_node_id_in_doc(doc: &mut Document<'_>) -> NodeId {
         doc.create_node(NodeKind::Text {
-            content: String::new(),
+            content: std::borrow::Cow::Owned(String::new()),
         })
     }
 

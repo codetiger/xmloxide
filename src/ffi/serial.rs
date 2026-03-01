@@ -19,7 +19,7 @@ use super::{clear_last_error, set_last_error};
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_serialize(doc: *const Document) -> *mut c_char {
+pub unsafe extern "C" fn xmloxide_serialize(doc: *const Document<'static>) -> *mut c_char {
     clear_last_error();
     if doc.is_null() {
         set_last_error("null document pointer");
@@ -40,7 +40,7 @@ pub unsafe extern "C" fn xmloxide_serialize(doc: *const Document) -> *mut c_char
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_serialize_pretty(doc: *const Document) -> *mut c_char {
+pub unsafe extern "C" fn xmloxide_serialize_pretty(doc: *const Document<'static>) -> *mut c_char {
     clear_last_error();
     if doc.is_null() {
         set_last_error("null document pointer");
@@ -65,7 +65,7 @@ pub unsafe extern "C" fn xmloxide_serialize_pretty(doc: *const Document) -> *mut
 /// null-terminated UTF-8 string.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_serialize_pretty_custom(
-    doc: *const Document,
+    doc: *const Document<'static>,
     indent_str: *const c_char,
 ) -> *mut c_char {
     clear_last_error();
@@ -98,7 +98,7 @@ pub unsafe extern "C" fn xmloxide_serialize_pretty_custom(
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_serialize_html(doc: *const Document) -> *mut c_char {
+pub unsafe extern "C" fn xmloxide_serialize_html(doc: *const Document<'static>) -> *mut c_char {
     clear_last_error();
     if doc.is_null() {
         set_last_error("null document pointer");

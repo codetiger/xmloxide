@@ -2200,7 +2200,7 @@ fn is_name_char(c: char) -> bool {
 /// let result = validate(&mut doc, &dtd);
 /// assert!(result.is_valid);
 /// ```
-pub fn validate(doc: &mut Document, dtd: &Dtd) -> ValidationResult {
+pub fn validate(doc: &mut Document<'_>, dtd: &Dtd) -> ValidationResult {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
     let mut id_values: HashSet<String> = HashSet::new();
@@ -2242,7 +2242,7 @@ pub fn validate(doc: &mut Document, dtd: &Dtd) -> ValidationResult {
 }
 
 /// Checks that the root element name matches the DOCTYPE name.
-fn check_root_element(doc: &Document, _dtd: &Dtd, errors: &mut Vec<ValidationError>) {
+fn check_root_element(doc: &Document<'_>, _dtd: &Dtd, errors: &mut Vec<ValidationError>) {
     // Find the DOCTYPE node to get the declared root name
     let doctype_name = doc.children(doc.root()).find_map(|id| {
         if let NodeKind::DocumentType { ref name, .. } = doc.node(id).kind {
@@ -2273,7 +2273,7 @@ fn check_root_element(doc: &Document, _dtd: &Dtd, errors: &mut Vec<ValidationErr
 /// Recursively validates an element and its descendants.
 #[allow(clippy::too_many_arguments)]
 fn validate_element_recursive(
-    doc: &mut Document,
+    doc: &mut Document<'_>,
     dtd: &Dtd,
     node_id: NodeId,
     errors: &mut Vec<ValidationError>,
@@ -2335,7 +2335,7 @@ fn validate_element_recursive(
 
 /// Validates that an element's children match its declared content model.
 fn validate_content_model(
-    doc: &Document,
+    doc: &Document<'_>,
     node_id: NodeId,
     elem_name: &str,
     model: &ContentModel,
@@ -2368,7 +2368,7 @@ fn validate_content_model(
             // Text is always allowed. Check that element children are in the allowed list.
             for child_id in doc.children(node_id) {
                 if let NodeKind::Element { ref name, .. } = doc.node(child_id).kind {
-                    if !allowed_names.contains(name) {
+                    if !allowed_names.iter().any(|n| n == &**name) {
                         errors.push(ValidationError {
                             message: format!(
                                 "element '{name}' is not allowed in mixed content \
@@ -2392,7 +2392,7 @@ fn validate_content_model(
                 .children(node_id)
                 .filter_map(|child_id| {
                     if let NodeKind::Element { ref name, .. } = doc.node(child_id).kind {
-                        Some(name.clone())
+                        Some(name.to_string())
                     } else {
                         None
                     }
@@ -2528,7 +2528,7 @@ fn match_with_occurrence(
 /// Validates attributes for an element against DTD attribute declarations.
 #[allow(clippy::too_many_arguments)]
 fn validate_attributes(
-    doc: &mut Document,
+    doc: &mut Document<'_>,
     dtd: &Dtd,
     node_id: NodeId,
     elem_name: &str,
@@ -2611,7 +2611,7 @@ fn validate_attributes(
 /// Validates an attribute value against its declared type.
 #[allow(clippy::too_many_arguments)]
 fn validate_attribute_type(
-    doc: &mut Document,
+    doc: &mut Document<'_>,
     node_id: NodeId,
     value: &str,
     attr_type: &AttributeType,
@@ -2654,7 +2654,7 @@ fn validate_attribute_type(
 /// On success, registers the ID in the document's `id_map` so it can be
 /// looked up via [`Document::element_by_id`] and the `XPath` `id()` function.
 fn validate_id_value(
-    doc: &mut Document,
+    doc: &mut Document<'_>,
     node_id: NodeId,
     value: &str,
     attr_name: &str,
@@ -3073,7 +3073,7 @@ mod tests {
 
     // --- Validation Tests ---
 
-    fn make_doc(xml: &str) -> Document {
+    fn make_doc(xml: &str) -> Document<'_> {
         Document::parse_str(xml).unwrap()
     }
 

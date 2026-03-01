@@ -3,6 +3,7 @@
 //! Implements a hand-rolled recursive descent parser for XML 1.0 (Fifth Edition).
 //! See <https://www.w3.org/TR/xml/> for the specification.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use crate::error::{ErrorSeverity, ParseError};
@@ -11,9 +12,8 @@ use crate::validation::dtd::{parse_dtd, serialize_dtd, AttributeDecl, AttributeT
 
 use super::input::{
     find_invalid_xml_char, may_contain_invalid_xml_chars, parse_cdata_content,
-    parse_comment_content, parse_pi_content, parse_xml_decl, split_name, split_owned_name,
-    validate_pubid, ExternalEntityInfo, NamespaceResolver, ParserInput, XMLNS_NAMESPACE,
-    XML_NAMESPACE,
+    parse_comment_content, parse_pi_content, parse_xml_decl, split_name, validate_pubid,
+    ExternalEntityInfo, NamespaceResolver, ParserInput, XMLNS_NAMESPACE, XML_NAMESPACE,
 };
 use super::ParseOptions;
 
@@ -29,7 +29,7 @@ pub(crate) struct XmlParser<'a> {
     /// Shared low-level input state (position, peek, advance, name parsing, etc.).
     input: ParserInput<'a>,
     /// The document being built.
-    doc: Document,
+    doc: Document<'a>,
     /// Parser options.
     options: ParseOptions,
     /// Namespace resolver managing the scope stack.
@@ -68,7 +68,7 @@ impl<'a> XmlParser<'a> {
     }
 
     /// Main parse entry point. Parses the entire document.
-    pub fn parse(&mut self) -> Result<Document, ParseError> {
+    pub fn parse(&mut self) -> Result<Document<'a>, ParseError> {
         // Parse optional XML declaration — must be at the very start of the
         // document with no leading whitespace (XML 1.0 §2.8).
         if self.input.looking_at(b"<?xml ")
@@ -139,8 +139,8 @@ impl<'a> XmlParser<'a> {
 
     fn parse_xml_declaration(&mut self) -> Result<(), ParseError> {
         let decl = parse_xml_decl(&mut self.input)?;
-        self.doc.version = Some(decl.version);
-        self.doc.encoding = decl.encoding;
+        self.doc.version = Some(Cow::Borrowed(decl.version));
+        self.doc.encoding = decl.encoding.map(Cow::Borrowed);
         self.doc.standalone = decl.standalone;
         Ok(())
     }
@@ -155,7 +155,7 @@ impl<'a> XmlParser<'a> {
             let ws = self.input.consume_whitespace();
             if !ws.is_empty() {
                 let ws_node = self.doc.create_node(NodeKind::Text {
-                    content: "\n".to_string(),
+                    content: Cow::Owned("\n".to_string()),
                 });
                 self.doc.append_child(parent, ws_node);
             }
@@ -201,7 +201,7 @@ impl<'a> XmlParser<'a> {
             self.input.skip_whitespace_required()?;
             let pid = self.input.parse_quoted_value()?;
             // Validate public ID characters per XML 1.0 §2.3 [13].
-            if let Some(msg) = validate_pubid(&pid) {
+            if let Some(msg) = validate_pubid(pid) {
                 if self.options.recover {
                     self.input.push_diagnostic(ErrorSeverity::Warning, msg);
                 } else {
@@ -268,9 +268,7 @@ impl<'a> XmlParser<'a> {
 
             // Extract the internal subset text (between '[' and ']').
             let end = self.input.pos() - 1; // exclude the closing ']'
-            let subset_text = std::str::from_utf8(self.input.slice(start, end))
-                .ok()
-                .map(str::to_string);
+            let subset_text = Some(self.input.str_slice(start, end).to_string());
 
             if let Some(subset_text) = subset_text {
                 // Detect parameter entity references in the internal subset.
@@ -355,10 +353,10 @@ impl<'a> XmlParser<'a> {
         self.input.expect_byte(b'>')?;
 
         let doctype_id = self.doc.create_node(NodeKind::DocumentType {
-            name,
-            system_id,
-            public_id,
-            internal_subset,
+            name: Cow::Borrowed(name),
+            system_id: system_id.map(Cow::Borrowed),
+            public_id: public_id.map(Cow::Borrowed),
+            internal_subset: internal_subset.map(Cow::Owned),
         });
         self.doc.append_child(parent, doctype_id);
         Ok(())
@@ -400,7 +398,7 @@ impl<'a> XmlParser<'a> {
                         let full_name = if let Some(ref pfx) = attributes[i].prefix {
                             format!("{pfx}:{}", attributes[i].name)
                         } else {
-                            attributes[i].name.clone()
+                            attributes[i].name.to_string()
                         };
                         if self.options.recover {
                             self.input.push_diagnostic(
@@ -430,7 +428,7 @@ impl<'a> XmlParser<'a> {
         if let Some(defaults) = if self.attr_defaults.is_empty() {
             None
         } else {
-            self.attr_defaults.get(&name).cloned()
+            self.attr_defaults.get(name).cloned()
         } {
             let mut insert_pos = 0; // insertion point for namespace declarations
             for attr_decl in &defaults {
@@ -458,9 +456,9 @@ impl<'a> XmlParser<'a> {
                         if is_fixed {
                             let (decl_prefix, decl_local) = split_name(attr_name);
                             let attr = Attribute {
-                                name: decl_local.to_string(),
-                                value,
-                                prefix: decl_prefix.map(String::from),
+                                name: Cow::Owned(decl_local.to_string()),
+                                value: Cow::Owned(value),
+                                prefix: decl_prefix.map(|p| Cow::Owned(p.to_string())),
                                 namespace: None,
                                 raw_value: None,
                             };
@@ -500,7 +498,7 @@ impl<'a> XmlParser<'a> {
         }
 
         // Split into prefix and local name for namespace processing.
-        let (prefix, local_name) = split_name(&name);
+        let (prefix, local_name) = split_name(name);
 
         // Validate QName syntax: check for multiple colons (the local part
         // should not contain a colon after split_name).
@@ -566,10 +564,10 @@ impl<'a> XmlParser<'a> {
                     // collapsed per XML 1.0 §3.3.3. Construct the full attribute
                     // name only when attr_types is non-empty (DTD present).
                     let ns_value = if self.attr_types.is_empty() {
-                        attr.value.clone()
+                        attr.value.to_string()
                     } else {
                         let attr_qname = format!("xmlns:{declared_prefix}");
-                        self.normalize_attr_value_by_type(&name, &attr_qname, &attr.value)
+                        self.normalize_attr_value_by_type(name, &attr_qname, &attr.value)
                     };
 
                     // XML 1.0 Namespaces: cannot unbind a prefix (xmlns:prefix="").
@@ -646,15 +644,15 @@ impl<'a> XmlParser<'a> {
                         }
                     }
 
-                    self.ns.bind(Some(attr.name.clone()), ns_value);
+                    self.ns.bind(Some(attr.name.to_string()), ns_value);
                 } else if attr.prefix.is_none() && attr.name == "xmlns" {
                     // Default namespace declaration: xmlns="uri"
 
                     // Normalize namespace URI based on DTD-declared attribute type.
                     let ns_value = if self.attr_types.is_empty() {
-                        attr.value.clone()
+                        attr.value.to_string()
                     } else {
-                        self.normalize_attr_value_by_type(&name, "xmlns", &attr.value)
+                        self.normalize_attr_value_by_type(name, "xmlns", &attr.value)
                     };
 
                     // Cannot bind default namespace to the XML or xmlns namespace URIs.
@@ -713,7 +711,7 @@ impl<'a> XmlParser<'a> {
         }
 
         // Resolve the element's namespace URI from its prefix.
-        let elem_ns = self.ns.resolve(prefix).map(String::from);
+        let elem_ns = self.ns.resolve(prefix).map(|s| Cow::Owned(String::from(s)));
 
         // Check for unbound element prefix.
         if let Some(pfx) = prefix {
@@ -744,7 +742,10 @@ impl<'a> XmlParser<'a> {
                     if pfx == "xmlns" {
                         continue; // namespace declaration, not a real attribute prefix
                     }
-                    let resolved = self.ns.resolve(Some(pfx.as_str())).map(String::from);
+                    let resolved = self
+                        .ns
+                        .resolve(Some(pfx))
+                        .map(|s| Cow::Owned(String::from(s)));
                     if pfx != "xml" && resolved.is_none() {
                         if self.options.recover {
                             self.input.push_diagnostic(
@@ -786,7 +787,7 @@ impl<'a> XmlParser<'a> {
                             let display = if let Some(ns) = &attributes[i].namespace {
                                 format!("{{{}}}:{}", ns, attributes[i].name)
                             } else {
-                                attributes[i].name.clone()
+                                attributes[i].name.to_string()
                             };
                             if self.options.recover {
                                 self.input.push_diagnostic(
@@ -813,13 +814,12 @@ impl<'a> XmlParser<'a> {
             }
         }
 
-        // Consume the original name String via split_owned_name, avoiding a
-        // re-allocation for unprefixed names (the common case). For unprefixed
-        // names, split_owned_name returns (None, name) — just a move, zero copy.
-        let (elem_prefix_owned, elem_local_owned) = split_owned_name(name);
+        // Split the borrowed name into prefix and local parts. Both are
+        // borrowed slices from the input — zero allocation.
+        let (elem_prefix_ref, elem_local_ref) = split_name(name);
         let elem_id = self.doc.create_node(NodeKind::Element {
-            name: elem_local_owned,
-            prefix: elem_prefix_owned,
+            name: Cow::Borrowed(elem_local_ref),
+            prefix: elem_prefix_ref.map(Cow::Borrowed),
             namespace: elem_ns,
             attributes,
         });
@@ -847,7 +847,7 @@ impl<'a> XmlParser<'a> {
         let (match_prefix, match_local) = {
             let node = self.doc.node(elem_id);
             match &node.kind {
-                NodeKind::Element { name, prefix, .. } => (prefix.as_deref(), name.as_str()),
+                NodeKind::Element { name, prefix, .. } => (prefix.as_deref(), &**name),
                 _ => unreachable!(),
             }
         };
@@ -941,8 +941,86 @@ impl<'a> XmlParser<'a> {
     // See XML 1.0 §2.4: [14] CharData
 
     #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines)]
     fn parse_char_data(&mut self, parent: NodeId) -> Result<(), ParseError> {
+        // Fast path: if the first chunk covers all text up to '<' with no CR,
+        // we can use a zero-copy borrowed slice.
+        let safe_len = self.input.scan_char_data();
+        if safe_len > 0 && self.input.peek_at(safe_len) == Some(b'<') {
+            let start = self.input.pos();
+            let bytes = &self.input.input[start..start + safe_len];
+            let has_cr = bytes.contains(&b'\r');
+            if !has_cr {
+                let chunk = self.input.str_slice(start, start + safe_len);
+                let bad_char = if may_contain_invalid_xml_chars(bytes) {
+                    find_invalid_xml_char(chunk)
+                } else {
+                    None
+                };
+                self.input.advance_counting_lines(safe_len);
+                if let Some(bad) = bad_char {
+                    if self.options.recover {
+                        self.input.push_diagnostic(
+                            ErrorSeverity::Error,
+                            format!("invalid XML character: U+{:04X}", bad as u32),
+                        );
+                    } else {
+                        return Err(self
+                            .input
+                            .fatal(format!("invalid XML character: U+{:04X}", bad as u32)));
+                    }
+                }
+                if !(self.options.no_blanks && chunk.bytes().all(|b| b.is_ascii_whitespace())) {
+                    let text_id = self.doc.create_node(NodeKind::Text {
+                        content: Cow::Borrowed(chunk),
+                    });
+                    self.doc.append_child(parent, text_id);
+                }
+                return Ok(());
+            }
+        }
+
+        // Slow path: entities, CR normalization, or multi-chunk text
         let mut text = String::new();
+
+        // If the fast-path scan found bytes, consume them as the first chunk
+        if safe_len > 0 {
+            let start = self.input.pos();
+            let chunk = self.input.str_slice(start, start + safe_len);
+            let bad_char = if may_contain_invalid_xml_chars(chunk.as_bytes()) {
+                find_invalid_xml_char(chunk)
+            } else {
+                None
+            };
+            if chunk.as_bytes().contains(&b'\r') {
+                let mut chars = chunk.chars().peekable();
+                while let Some(ch) = chars.next() {
+                    if ch == '\r' {
+                        if chars.peek() == Some(&'\n') {
+                            chars.next();
+                        }
+                        text.push('\n');
+                    } else {
+                        text.push(ch);
+                    }
+                }
+            } else {
+                text.push_str(chunk);
+            }
+            self.input.advance_counting_lines(safe_len);
+            if let Some(bad) = bad_char {
+                if self.options.recover {
+                    self.input.push_diagnostic(
+                        ErrorSeverity::Error,
+                        format!("invalid XML character: U+{:04X}", bad as u32),
+                    );
+                } else {
+                    return Err(self
+                        .input
+                        .fatal(format!("invalid XML character: U+{:04X}", bad as u32)));
+                }
+            }
+        }
 
         while !self.input.at_end() {
             // Bulk scan: find the next `<`, `&`, or `]]>` boundary and
@@ -950,11 +1028,7 @@ impl<'a> XmlParser<'a> {
             let safe_len = self.input.scan_char_data();
             if safe_len > 0 {
                 let start = self.input.pos();
-                let chunk = std::str::from_utf8(self.input.slice(start, start + safe_len))
-                    .map_err(|_| self.input.fatal("invalid UTF-8 in character data"))?;
-                // Fast byte-level pre-check for invalid XML chars (0x7F,
-                // U+FFFE, U+FFFF). Skips the expensive char-by-char
-                // validation for the 99.9% of chunks that are clean.
+                let chunk = self.input.str_slice(start, start + safe_len);
                 let bad_char = if may_contain_invalid_xml_chars(chunk.as_bytes()) {
                     find_invalid_xml_char(chunk)
                 } else {
@@ -1044,7 +1118,7 @@ impl<'a> XmlParser<'a> {
                             // Flush accumulated text before the entity ref
                             if !text.is_empty() {
                                 let text_id = self.doc.create_node(NodeKind::Text {
-                                    content: std::mem::take(&mut text),
+                                    content: Cow::Owned(std::mem::take(&mut text)),
                                 });
                                 self.doc.append_child(parent, text_id);
                             }
@@ -1054,10 +1128,10 @@ impl<'a> XmlParser<'a> {
                             self.input.expect_byte(b';')?;
                             // Count entity expansion for limit tracking
                             self.input.entity_expansions += 1;
-                            let entity_value = self.input.entity_map.get(&name).cloned();
+                            let entity_value = self.input.entity_map.get(name).cloned();
                             let ref_id = self.doc.create_node(NodeKind::EntityRef {
-                                name,
-                                value: entity_value,
+                                name: Cow::Borrowed(name),
+                                value: entity_value.map(Cow::Owned),
                             });
                             self.doc.append_child(parent, ref_id);
                             continue;
@@ -1076,7 +1150,9 @@ impl<'a> XmlParser<'a> {
             if self.options.no_blanks && text.chars().all(char::is_whitespace) {
                 return Ok(());
             }
-            let text_id = self.doc.create_node(NodeKind::Text { content: text });
+            let text_id = self.doc.create_node(NodeKind::Text {
+                content: Cow::Owned(text),
+            });
             self.doc.append_child(parent, text_id);
         }
 
@@ -1124,9 +1200,8 @@ impl<'a> XmlParser<'a> {
         if i == name_start || i >= remaining.len() || remaining[i] != b';' {
             return None;
         }
-        std::str::from_utf8(&remaining[name_start..i])
-            .ok()
-            .map(String::from)
+        let pos = self.input.pos();
+        Some(self.input.str_slice(pos + name_start, pos + i).to_string())
     }
 
     /// Checks if all entity references (`&name;`) in a raw attribute value
@@ -1167,7 +1242,7 @@ impl<'a> XmlParser<'a> {
     // --- Attributes ---
     // See XML 1.0 §3.1: [41] Attribute
 
-    fn parse_attribute(&mut self) -> Result<Attribute, ParseError> {
+    fn parse_attribute(&mut self) -> Result<Attribute<'a>, ParseError> {
         let name = self.input.parse_name()?;
         self.input.skip_whitespace();
         self.input.expect_byte(b'=')?;
@@ -1185,7 +1260,7 @@ impl<'a> XmlParser<'a> {
         let raw_value = if raw_end > raw_start + 2 {
             let raw_bytes = self.input.slice(raw_start + 1, raw_end - 1);
             if raw_bytes.contains(&b'&') {
-                let raw_str = std::str::from_utf8(raw_bytes).ok().map(str::to_string);
+                let raw_str = Some(self.input.str_slice(raw_start + 1, raw_end - 1).to_string());
                 // Only store raw_value if it differs from the expanded value
                 // (i.e., it contained entity references that got expanded) AND
                 // all entity references in the raw value are declared (not
@@ -1198,14 +1273,14 @@ impl<'a> XmlParser<'a> {
             None
         };
 
-        let (prefix, local_name) = split_owned_name(name);
+        let (prefix, local_name) = split_name(name);
 
         Ok(Attribute {
-            name: local_name,
+            name: Cow::Borrowed(local_name),
             value,
-            prefix,
+            prefix: prefix.map(Cow::Borrowed),
             namespace: None,
-            raw_value,
+            raw_value: raw_value.map(Cow::Owned),
         })
     }
 
@@ -1224,7 +1299,9 @@ impl<'a> XmlParser<'a> {
 
     fn parse_cdata(&mut self, parent: NodeId) -> Result<(), ParseError> {
         let content = parse_cdata_content(&mut self.input)?;
-        let cdata_id = self.doc.create_node(NodeKind::CData { content });
+        let cdata_id = self.doc.create_node(NodeKind::CData {
+            content: Cow::Borrowed(content),
+        });
         self.doc.append_child(parent, cdata_id);
         Ok(())
     }
@@ -1234,9 +1311,10 @@ impl<'a> XmlParser<'a> {
 
     fn parse_processing_instruction(&mut self, parent: NodeId) -> Result<(), ParseError> {
         let (target, data) = parse_pi_content(&mut self.input)?;
-        let pi_id = self
-            .doc
-            .create_node(NodeKind::ProcessingInstruction { target, data });
+        let pi_id = self.doc.create_node(NodeKind::ProcessingInstruction {
+            target: Cow::Borrowed(target),
+            data: data.map(Cow::Borrowed),
+        });
         self.doc.append_child(parent, pi_id);
         Ok(())
     }
@@ -1254,7 +1332,7 @@ mod tests {
     use crate::tree::Document;
     use pretty_assertions::assert_eq;
 
-    fn parse(input: &str) -> Document {
+    fn parse(input: &str) -> Document<'_> {
         Document::parse_str(input).unwrap_or_else(|e| panic!("parse failed: {e}"))
     }
 

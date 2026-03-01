@@ -20,6 +20,7 @@ mod node;
 pub use node::NodeKind;
 
 use crate::error::{ParseDiagnostic, ParseError};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 
@@ -71,9 +72,9 @@ impl NodeId {
 /// parent, children, and siblings for tree navigation. Access individual
 /// nodes via [`Document::node`].
 #[derive(Debug, Clone)]
-pub struct NodeData {
+pub struct NodeData<'a> {
     /// What kind of node this is (element, text, comment, etc.) and its payload.
-    pub kind: NodeKind,
+    pub kind: NodeKind<'a>,
     /// Parent node, if any. The document root node has no parent.
     pub parent: Option<NodeId>,
     /// First child node.
@@ -86,8 +87,8 @@ pub struct NodeData {
     pub prev_sibling: Option<NodeId>,
 }
 
-impl NodeData {
-    fn new(kind: NodeKind) -> Self {
+impl<'a> NodeData<'a> {
+    fn new(kind: NodeKind<'a>) -> Self {
         Self {
             kind,
             parent: None,
@@ -101,19 +102,19 @@ impl NodeData {
 
 /// An XML attribute on an element.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Attribute {
+pub struct Attribute<'a> {
     /// The attribute name (the local part, e.g., `"lang"` for `xml:lang`).
-    pub name: String,
+    pub name: Cow<'a, str>,
     /// The attribute value (fully expanded — entity references resolved).
-    pub value: String,
+    pub value: Cow<'a, str>,
     /// Namespace prefix, if any (e.g., `"xml"` for `xml:lang`).
-    pub prefix: Option<String>,
+    pub prefix: Option<Cow<'a, str>>,
     /// Namespace URI after resolution, if any.
-    pub namespace: Option<String>,
+    pub namespace: Option<Cow<'a, str>>,
     /// The original attribute value text before entity expansion, if it
     /// contained entity references. Used for serialization to preserve
     /// entity references in the output (matching libxml2 behavior).
-    pub raw_value: Option<String>,
+    pub raw_value: Option<Cow<'a, str>>,
 }
 
 /// An XML document.
@@ -132,15 +133,15 @@ pub struct Attribute {
 /// assert_eq!(doc.node_name(root), Some("root"));
 /// ```
 #[derive(Debug)]
-pub struct Document {
+pub struct Document<'a> {
     /// The node arena. Index 0 is unused (placeholder for `NonZeroU32`).
-    nodes: Vec<NodeData>,
+    nodes: Vec<NodeData<'a>>,
     /// The document root node id (the Document node, not the root element).
     root: NodeId,
     /// XML version from the XML declaration (e.g., "1.0").
-    pub version: Option<String>,
+    pub version: Option<Cow<'a, str>>,
     /// Encoding from the XML declaration (e.g., "UTF-8").
-    pub encoding: Option<String>,
+    pub encoding: Option<Cow<'a, str>>,
     /// Standalone flag from the XML declaration.
     pub standalone: Option<bool>,
     /// Diagnostics collected during parsing (warnings and recovered errors).
@@ -153,7 +154,7 @@ pub struct Document {
     id_map: HashMap<String, NodeId>,
 }
 
-impl Document {
+impl<'a> Document<'a> {
     /// Creates a new empty document.
     ///
     /// The document contains a single root Document node.
@@ -189,7 +190,7 @@ impl Document {
     ///
     /// let doc = Document::parse_str("<root><child/></root>").unwrap();
     /// ```
-    pub fn parse_str(input: &str) -> Result<Self, ParseError> {
+    pub fn parse_str(input: &'a str) -> Result<Self, ParseError> {
         // Strip leading UTF-8 BOM (U+FEFF) if present — per XML 1.0 §4.3.3,
         // the BOM is used for encoding detection and should be ignored.
         let had_bom = input.starts_with('\u{FEFF}');
@@ -283,7 +284,7 @@ impl Document {
     /// let root = doc.root_element().unwrap();
     /// assert_eq!(doc.node_name(root), Some("root"));
     /// ```
-    pub fn parse_bytes(input: &[u8]) -> Result<Self, ParseError> {
+    pub fn parse_bytes(input: &[u8]) -> Result<Document<'static>, ParseError> {
         use crate::encoding::decode_to_utf8;
         use crate::error::SourceLocation;
 
@@ -295,8 +296,9 @@ impl Document {
 
         // Skip BOM and encoding checks — decode_to_utf8 already handled
         // encoding detection and transcoding. Go directly to the parser.
+        // All strings will be Cow::Owned since the decoded buffer is temporary.
         let text = utf8.strip_prefix('\u{FEFF}').unwrap_or(&utf8);
-        crate::parser::parse_str(text)
+        crate::parser::parse_str(text).map(Document::into_static)
     }
 
     /// Parses an XML file from the filesystem.
@@ -316,7 +318,7 @@ impl Document {
     ///
     /// let doc = Document::parse_file("document.xml").unwrap();
     /// ```
-    pub fn parse_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, ParseError> {
+    pub fn parse_file<P: AsRef<std::path::Path>>(path: P) -> Result<Document<'static>, ParseError> {
         use crate::error::SourceLocation;
 
         let bytes = std::fs::read(path.as_ref()).map_err(|e| ParseError {
@@ -349,13 +351,13 @@ impl Document {
     /// Panics if `id` does not refer to a valid node.
     #[must_use]
     #[inline]
-    pub fn node(&self, id: NodeId) -> &NodeData {
+    pub fn node(&self, id: NodeId) -> &NodeData<'a> {
         &self.nodes[id.as_index()]
     }
 
     /// Returns a mutable reference to the `NodeData` for the given node.
     #[inline]
-    pub(crate) fn node_mut(&mut self, id: NodeId) -> &mut NodeData {
+    pub(crate) fn node_mut(&mut self, id: NodeId) -> &mut NodeData<'a> {
         &mut self.nodes[id.as_index()]
     }
 
@@ -441,7 +443,7 @@ impl Document {
     ///
     /// Returns an empty slice for non-element nodes.
     #[must_use]
-    pub fn attributes(&self, id: NodeId) -> &[Attribute] {
+    pub fn attributes(&self, id: NodeId) -> &[Attribute<'a>] {
         match &self.node(id).kind {
             NodeKind::Element { attributes, .. } => attributes,
             _ => &[],
@@ -454,7 +456,7 @@ impl Document {
         self.attributes(id)
             .iter()
             .find(|a| a.name == name)
-            .map(|a| a.value.as_str())
+            .map(|a| &*a.value)
     }
 
     // --- ID lookup ---
@@ -543,7 +545,7 @@ impl Document {
     // --- Mutation ---
 
     /// Allocates a new node in the arena and returns its `NodeId`.
-    pub fn create_node(&mut self, kind: NodeKind) -> NodeId {
+    pub fn create_node(&mut self, kind: NodeKind<'a>) -> NodeId {
         let index = self.nodes.len();
         self.nodes.push(NodeData::new(kind));
         NodeId::from_index(index)
@@ -703,7 +705,7 @@ impl Document {
                     | NodeKind::Comment {
                         content: ref mut c, ..
                     } => {
-                        *c = content.to_string();
+                        *c = Cow::Owned(content.to_string());
                     }
                     _ => unreachable!(),
                 }
@@ -717,14 +719,14 @@ impl Document {
                 }
                 // Add a single text node
                 let text = self.create_node(NodeKind::Text {
-                    content: content.to_string(),
+                    content: Cow::Owned(content.to_string()),
                 });
                 self.append_child(id, text);
                 true
             }
             NodeKind::ProcessingInstruction { .. } => {
                 if let NodeKind::ProcessingInstruction { data, .. } = &mut self.node_mut(id).kind {
-                    *data = Some(content.to_string());
+                    *data = Some(Cow::Owned(content.to_string()));
                 }
                 true
             }
@@ -739,9 +741,57 @@ impl Document {
     pub fn node_count(&self) -> usize {
         self.nodes.len() - 1 // subtract placeholder at index 0
     }
+
+    /// Converts this document into a fully-owned `Document<'static>` by
+    /// converting all borrowed `Cow::Borrowed` strings to `Cow::Owned`.
+    ///
+    /// Used by `parse_bytes` and `parse_file` where the input buffer is
+    /// temporary and the document must outlive it.
+    #[must_use]
+    pub fn into_static(self) -> Document<'static> {
+        Document {
+            nodes: self
+                .nodes
+                .into_iter()
+                .map(|nd| NodeData {
+                    kind: nd.kind.into_static(),
+                    parent: nd.parent,
+                    first_child: nd.first_child,
+                    last_child: nd.last_child,
+                    next_sibling: nd.next_sibling,
+                    prev_sibling: nd.prev_sibling,
+                })
+                .collect(),
+            root: self.root,
+            version: self.version.map(cow_into_static),
+            encoding: self.encoding.map(cow_into_static),
+            standalone: self.standalone,
+            diagnostics: self.diagnostics,
+            id_map: self.id_map,
+        }
+    }
 }
 
-impl Default for Document {
+/// Converts a `Cow<'a, str>` into a `Cow<'static, str>` by taking ownership.
+pub(crate) fn cow_into_static(c: Cow<'_, str>) -> Cow<'static, str> {
+    Cow::Owned(c.into_owned())
+}
+
+impl Attribute<'_> {
+    /// Converts all borrowed strings to owned, producing a `'static` lifetime.
+    #[must_use]
+    pub fn into_static(self) -> Attribute<'static> {
+        Attribute {
+            name: cow_into_static(self.name),
+            value: cow_into_static(self.value),
+            prefix: self.prefix.map(cow_into_static),
+            namespace: self.namespace.map(cow_into_static),
+            raw_value: self.raw_value.map(cow_into_static),
+        }
+    }
+}
+
+impl Default for Document<'_> {
     fn default() -> Self {
         Self::new()
     }
@@ -751,7 +801,7 @@ impl Default for Document {
 
 /// Iterator over the children of a node.
 pub struct Children<'a> {
-    doc: &'a Document,
+    doc: &'a Document<'a>,
     next: Option<NodeId>,
 }
 
@@ -768,7 +818,7 @@ impl Iterator for Children<'_> {
 
 /// Iterator over a node and its ancestors.
 pub struct Ancestors<'a> {
-    doc: &'a Document,
+    doc: &'a Document<'a>,
     next: Option<NodeId>,
 }
 
@@ -785,7 +835,7 @@ impl Iterator for Ancestors<'_> {
 
 /// Depth-first iterator over all descendants of a node.
 pub struct Descendants<'a> {
-    doc: &'a Document,
+    doc: &'a Document<'a>,
     root: NodeId,
     next: Option<NodeId>,
 }
@@ -845,7 +895,7 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let elem = doc.create_node(NodeKind::Element {
-            name: "div".to_string(),
+            name: Cow::Owned("div".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -864,13 +914,13 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         let c = doc.create_node(NodeKind::Text {
-            content: "C".to_string(),
+            content: Cow::Owned("C".to_string()),
         });
 
         doc.append_child(root, a);
@@ -893,13 +943,13 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         let c = doc.create_node(NodeKind::Text {
-            content: "C".to_string(),
+            content: Cow::Owned("C".to_string()),
         });
 
         doc.append_child(root, a);
@@ -923,16 +973,16 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         let c = doc.create_node(NodeKind::Text {
-            content: "C".to_string(),
+            content: Cow::Owned("C".to_string()),
         });
         doc.append_child(root, a);
         doc.append_child(root, c);
 
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         doc.insert_before(c, b);
 
@@ -947,12 +997,12 @@ mod tests {
         let root = doc.root();
 
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         doc.append_child(root, b);
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         doc.insert_before(b, a);
 
@@ -966,13 +1016,13 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         let c = doc.create_node(NodeKind::Text {
-            content: "C".to_string(),
+            content: Cow::Owned("C".to_string()),
         });
 
         doc.append_child(root, a);
@@ -994,10 +1044,10 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         doc.append_child(root, a);
         doc.append_child(root, b);
@@ -1013,10 +1063,10 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         doc.append_child(root, a);
         doc.append_child(root, b);
@@ -1032,7 +1082,7 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         doc.append_child(root, a);
         doc.detach(a);
@@ -1047,13 +1097,13 @@ mod tests {
         let root = doc.root();
 
         let parent = doc.create_node(NodeKind::Element {
-            name: "parent".to_string(),
+            name: Cow::Owned("parent".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         let child = doc.create_node(NodeKind::Element {
-            name: "child".to_string(),
+            name: Cow::Owned("child".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -1072,22 +1122,22 @@ mod tests {
         let root = doc.root();
 
         let p = doc.create_node(NodeKind::Element {
-            name: "p".to_string(),
+            name: Cow::Owned("p".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         let a = doc.create_node(NodeKind::Text {
-            content: "hello ".to_string(),
+            content: Cow::Owned("hello ".to_string()),
         });
         let b = doc.create_node(NodeKind::Element {
-            name: "b".to_string(),
+            name: Cow::Owned("b".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         let b_text = doc.create_node(NodeKind::Text {
-            content: "world".to_string(),
+            content: Cow::Owned("world".to_string()),
         });
 
         doc.append_child(root, p);
@@ -1105,22 +1155,22 @@ mod tests {
         let root = doc.root();
 
         let p = doc.create_node(NodeKind::Element {
-            name: "p".to_string(),
+            name: Cow::Owned("p".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         let text1 = doc.create_node(NodeKind::Text {
-            content: "hello ".to_string(),
+            content: Cow::Owned("hello ".to_string()),
         });
         let bold = doc.create_node(NodeKind::Element {
-            name: "b".to_string(),
+            name: Cow::Owned("b".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         let text2 = doc.create_node(NodeKind::Text {
-            content: "world".to_string(),
+            content: Cow::Owned("world".to_string()),
         });
 
         doc.append_child(root, p);
@@ -1137,20 +1187,20 @@ mod tests {
         let root = doc.root();
 
         let elem = doc.create_node(NodeKind::Element {
-            name: "div".to_string(),
+            name: Cow::Owned("div".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![
                 Attribute {
-                    name: "id".to_string(),
-                    value: "main".to_string(),
+                    name: Cow::Owned("id".to_string()),
+                    value: Cow::Owned("main".to_string()),
                     prefix: None,
                     namespace: None,
                     raw_value: None,
                 },
                 Attribute {
-                    name: "class".to_string(),
-                    value: "container".to_string(),
+                    name: Cow::Owned("class".to_string()),
+                    value: Cow::Owned("container".to_string()),
                     prefix: None,
                     namespace: None,
                     raw_value: None,
@@ -1174,7 +1224,7 @@ mod tests {
         assert_eq!(doc.root_element(), None);
 
         let elem = doc.create_node(NodeKind::Element {
-            name: "root".to_string(),
+            name: Cow::Owned("root".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -1189,22 +1239,22 @@ mod tests {
         let mut doc = Document::new();
 
         let text = doc.create_node(NodeKind::Text {
-            content: "hello".to_string(),
+            content: Cow::Owned("hello".to_string()),
         });
         assert_eq!(doc.node_text(text), Some("hello"));
 
         let comment = doc.create_node(NodeKind::Comment {
-            content: "a comment".to_string(),
+            content: Cow::Owned("a comment".to_string()),
         });
         assert_eq!(doc.node_text(comment), Some("a comment"));
 
         let cdata = doc.create_node(NodeKind::CData {
-            content: "cdata content".to_string(),
+            content: Cow::Owned("cdata content".to_string()),
         });
         assert_eq!(doc.node_text(cdata), Some("cdata content"));
 
         let elem = doc.create_node(NodeKind::Element {
-            name: "div".to_string(),
+            name: Cow::Owned("div".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -1223,7 +1273,7 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let elem = doc.create_node(NodeKind::Element {
-            name: "item".to_string(),
+            name: Cow::Owned("item".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -1240,13 +1290,13 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         let c = doc.create_node(NodeKind::Text {
-            content: "C".to_string(),
+            content: Cow::Owned("C".to_string()),
         });
 
         doc.append_child(root, a);
@@ -1270,7 +1320,7 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Element {
-            name: "only".to_string(),
+            name: Cow::Owned("only".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -1290,10 +1340,10 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         doc.append_child(root, a);
         doc.append_child(root, b);
@@ -1311,10 +1361,10 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         doc.append_child(root, a);
         doc.append_child(root, b);
@@ -1330,7 +1380,7 @@ mod tests {
     fn test_remove_node_no_parent_is_noop() {
         let mut doc = Document::new();
         let orphan = doc.create_node(NodeKind::Text {
-            content: "orphan".to_string(),
+            content: Cow::Owned("orphan".to_string()),
         });
 
         // Removing a node with no parent should not panic
@@ -1345,7 +1395,7 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Element {
-            name: "first".to_string(),
+            name: Cow::Owned("first".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -1364,16 +1414,16 @@ mod tests {
         let root = doc.root();
 
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         let c = doc.create_node(NodeKind::Text {
-            content: "C".to_string(),
+            content: Cow::Owned("C".to_string()),
         });
         doc.append_child(root, b);
         doc.append_child(root, c);
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         doc.prepend_child(root, a);
 
@@ -1392,13 +1442,13 @@ mod tests {
         let root = doc.root();
 
         let c = doc.create_node(NodeKind::Text {
-            content: "C".to_string(),
+            content: Cow::Owned("C".to_string()),
         });
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
 
         doc.prepend_child(root, c);
@@ -1413,9 +1463,9 @@ mod tests {
     fn test_node_namespace_with_namespace() {
         let mut doc = Document::new();
         let elem = doc.create_node(NodeKind::Element {
-            name: "rect".to_string(),
-            prefix: Some("svg".to_string()),
-            namespace: Some("http://www.w3.org/2000/svg".to_string()),
+            name: Cow::Owned("rect".to_string()),
+            prefix: Some(Cow::Owned("svg".to_string())),
+            namespace: Some(Cow::Owned("http://www.w3.org/2000/svg".to_string())),
             attributes: vec![],
         });
 
@@ -1426,7 +1476,7 @@ mod tests {
     fn test_node_namespace_without_namespace() {
         let mut doc = Document::new();
         let elem = doc.create_node(NodeKind::Element {
-            name: "div".to_string(),
+            name: Cow::Owned("div".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -1439,10 +1489,10 @@ mod tests {
     fn test_node_namespace_non_element() {
         let mut doc = Document::new();
         let text = doc.create_node(NodeKind::Text {
-            content: "hello".to_string(),
+            content: Cow::Owned("hello".to_string()),
         });
         let comment = doc.create_node(NodeKind::Comment {
-            content: "a comment".to_string(),
+            content: Cow::Owned("a comment".to_string()),
         });
 
         assert_eq!(doc.node_namespace(text), None);
@@ -1455,7 +1505,7 @@ mod tests {
         let root = doc.root();
 
         let leaf = doc.create_node(NodeKind::Text {
-            content: "leaf".to_string(),
+            content: Cow::Owned("leaf".to_string()),
         });
         doc.append_child(root, leaf);
 
@@ -1468,7 +1518,7 @@ mod tests {
         let root = doc.root();
 
         let leaf = doc.create_node(NodeKind::Text {
-            content: "leaf".to_string(),
+            content: Cow::Owned("leaf".to_string()),
         });
         doc.append_child(root, leaf);
 
@@ -1481,7 +1531,7 @@ mod tests {
         let root = doc.root();
 
         let only = doc.create_node(NodeKind::Element {
-            name: "only".to_string(),
+            name: Cow::Owned("only".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -1498,13 +1548,13 @@ mod tests {
         let root = doc.root();
 
         let first = doc.create_node(NodeKind::Text {
-            content: "first".to_string(),
+            content: Cow::Owned("first".to_string()),
         });
         let middle = doc.create_node(NodeKind::Text {
-            content: "middle".to_string(),
+            content: Cow::Owned("middle".to_string()),
         });
         let last = doc.create_node(NodeKind::Text {
-            content: "last".to_string(),
+            content: Cow::Owned("last".to_string()),
         });
 
         doc.append_child(root, first);
@@ -1522,10 +1572,10 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
 
         doc.append_child(root, a);
@@ -1541,10 +1591,10 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
 
         doc.append_child(root, a);
@@ -1560,13 +1610,13 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         let b = doc.create_node(NodeKind::Text {
-            content: "B".to_string(),
+            content: Cow::Owned("B".to_string()),
         });
         let c = doc.create_node(NodeKind::Text {
-            content: "C".to_string(),
+            content: Cow::Owned("C".to_string()),
         });
 
         doc.append_child(root, a);
@@ -1686,7 +1736,7 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Element {
-            name: "a".to_string(),
+            name: Cow::Owned("a".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -1694,7 +1744,7 @@ mod tests {
         assert_eq!(doc.node_count(), 2);
 
         let b = doc.create_node(NodeKind::Text {
-            content: "text".to_string(),
+            content: Cow::Owned("text".to_string()),
         });
         assert_eq!(doc.node_count(), 3);
 
@@ -1711,7 +1761,7 @@ mod tests {
         let root = doc.root();
 
         let a = doc.create_node(NodeKind::Text {
-            content: "A".to_string(),
+            content: Cow::Owned("A".to_string()),
         });
         doc.append_child(root, a);
         assert_eq!(doc.node_count(), 2);

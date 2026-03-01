@@ -18,7 +18,7 @@ use super::{clear_last_error, set_last_error};
 ///
 /// `doc` must be a valid mutable document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_process_xincludes(doc: *mut Document) -> i32 {
+pub unsafe extern "C" fn xmloxide_process_xincludes(doc: *mut Document<'static>) -> i32 {
     clear_last_error();
     if doc.is_null() {
         set_last_error("null document pointer");

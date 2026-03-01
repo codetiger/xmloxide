@@ -18,7 +18,7 @@ use super::{clear_last_error, set_last_error};
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_canonicalize(doc: *const Document) -> *mut c_char {
+pub unsafe extern "C" fn xmloxide_canonicalize(doc: *const Document<'static>) -> *mut c_char {
     clear_last_error();
     if doc.is_null() {
         set_last_error("null document pointer");
@@ -43,7 +43,7 @@ pub unsafe extern "C" fn xmloxide_canonicalize(doc: *const Document) -> *mut c_c
 /// `doc` must be a valid document pointer.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_canonicalize_opts(
-    doc: *const Document,
+    doc: *const Document<'static>,
     with_comments: i32,
     exclusive: i32,
 ) -> *mut c_char {
@@ -73,7 +73,7 @@ pub unsafe extern "C" fn xmloxide_canonicalize_opts(
 /// `doc` must be a valid document pointer.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_canonicalize_subtree(
-    doc: *const Document,
+    doc: *const Document<'static>,
     node: u32,
     with_comments: i32,
     exclusive: i32,

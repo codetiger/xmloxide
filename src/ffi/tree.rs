@@ -1,6 +1,7 @@
 //! Tree navigation and node inspection FFI functions.
 #![allow(unsafe_code, clippy::missing_safety_doc)]
 
+use std::borrow::Cow;
 use std::os::raw::c_char;
 
 use crate::tree::{Document, NodeId, NodeKind};
@@ -34,7 +35,10 @@ fn node_id_to_raw(id: Option<NodeId>) -> u32 {
 /// Helper to safely dereference a document pointer and node id.
 ///
 /// Returns `None` if either the document is null or the raw node id is 0.
-unsafe fn doc_and_node(doc: *const Document, raw_node: u32) -> Option<(&'static Document, NodeId)> {
+unsafe fn doc_and_node(
+    doc: *const Document<'static>,
+    raw_node: u32,
+) -> Option<(&'static Document<'static>, NodeId)> {
     if doc.is_null() {
         return None;
     }
@@ -50,7 +54,7 @@ unsafe fn doc_and_node(doc: *const Document, raw_node: u32) -> Option<(&'static 
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_doc_root(doc: *const Document) -> u32 {
+pub unsafe extern "C" fn xmloxide_doc_root(doc: *const Document<'static>) -> u32 {
     if doc.is_null() {
         return 0;
     }
@@ -65,7 +69,7 @@ pub unsafe extern "C" fn xmloxide_doc_root(doc: *const Document) -> u32 {
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_doc_root_element(doc: *const Document) -> u32 {
+pub unsafe extern "C" fn xmloxide_doc_root_element(doc: *const Document<'static>) -> u32 {
     if doc.is_null() {
         return 0;
     }
@@ -80,7 +84,7 @@ pub unsafe extern "C" fn xmloxide_doc_root_element(doc: *const Document) -> u32 
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_node_parent(doc: *const Document, node: u32) -> u32 {
+pub unsafe extern "C" fn xmloxide_node_parent(doc: *const Document<'static>, node: u32) -> u32 {
     let Some((doc, node_id)) = (unsafe { doc_and_node(doc, node) }) else {
         return 0;
     };
@@ -93,7 +97,10 @@ pub unsafe extern "C" fn xmloxide_node_parent(doc: *const Document, node: u32) -
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_node_first_child(doc: *const Document, node: u32) -> u32 {
+pub unsafe extern "C" fn xmloxide_node_first_child(
+    doc: *const Document<'static>,
+    node: u32,
+) -> u32 {
     let Some((doc, node_id)) = (unsafe { doc_and_node(doc, node) }) else {
         return 0;
     };
@@ -106,7 +113,7 @@ pub unsafe extern "C" fn xmloxide_node_first_child(doc: *const Document, node: u
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_node_last_child(doc: *const Document, node: u32) -> u32 {
+pub unsafe extern "C" fn xmloxide_node_last_child(doc: *const Document<'static>, node: u32) -> u32 {
     let Some((doc, node_id)) = (unsafe { doc_and_node(doc, node) }) else {
         return 0;
     };
@@ -119,7 +126,10 @@ pub unsafe extern "C" fn xmloxide_node_last_child(doc: *const Document, node: u3
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_node_next_sibling(doc: *const Document, node: u32) -> u32 {
+pub unsafe extern "C" fn xmloxide_node_next_sibling(
+    doc: *const Document<'static>,
+    node: u32,
+) -> u32 {
     let Some((doc, node_id)) = (unsafe { doc_and_node(doc, node) }) else {
         return 0;
     };
@@ -132,7 +142,10 @@ pub unsafe extern "C" fn xmloxide_node_next_sibling(doc: *const Document, node: 
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_node_prev_sibling(doc: *const Document, node: u32) -> u32 {
+pub unsafe extern "C" fn xmloxide_node_prev_sibling(
+    doc: *const Document<'static>,
+    node: u32,
+) -> u32 {
     let Some((doc, node_id)) = (unsafe { doc_and_node(doc, node) }) else {
         return 0;
     };
@@ -147,7 +160,7 @@ pub unsafe extern "C" fn xmloxide_node_prev_sibling(doc: *const Document, node: 
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_node_type(doc: *const Document, node: u32) -> i32 {
+pub unsafe extern "C" fn xmloxide_node_type(doc: *const Document<'static>, node: u32) -> i32 {
     let Some((doc, node_id)) = (unsafe { doc_and_node(doc, node) }) else {
         return -1;
     };
@@ -172,7 +185,10 @@ pub unsafe extern "C" fn xmloxide_node_type(doc: *const Document, node: u32) -> 
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_node_name(doc: *const Document, node: u32) -> *mut c_char {
+pub unsafe extern "C" fn xmloxide_node_name(
+    doc: *const Document<'static>,
+    node: u32,
+) -> *mut c_char {
     let Some((doc, node_id)) = (unsafe { doc_and_node(doc, node) }) else {
         return std::ptr::null_mut();
     };
@@ -191,7 +207,10 @@ pub unsafe extern "C" fn xmloxide_node_name(doc: *const Document, node: u32) -> 
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_node_text(doc: *const Document, node: u32) -> *mut c_char {
+pub unsafe extern "C" fn xmloxide_node_text(
+    doc: *const Document<'static>,
+    node: u32,
+) -> *mut c_char {
     let Some((doc, node_id)) = (unsafe { doc_and_node(doc, node) }) else {
         return std::ptr::null_mut();
     };
@@ -210,7 +229,7 @@ pub unsafe extern "C" fn xmloxide_node_text(doc: *const Document, node: u32) -> 
 /// `doc` must be a valid document pointer.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_node_text_content(
-    doc: *const Document,
+    doc: *const Document<'static>,
     node: u32,
 ) -> *mut c_char {
     let Some((doc, node_id)) = (unsafe { doc_and_node(doc, node) }) else {
@@ -228,7 +247,10 @@ pub unsafe extern "C" fn xmloxide_node_text_content(
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_node_namespace(doc: *const Document, node: u32) -> *mut c_char {
+pub unsafe extern "C" fn xmloxide_node_namespace(
+    doc: *const Document<'static>,
+    node: u32,
+) -> *mut c_char {
     let Some((doc, node_id)) = (unsafe { doc_and_node(doc, node) }) else {
         return std::ptr::null_mut();
     };
@@ -249,7 +271,7 @@ pub unsafe extern "C" fn xmloxide_node_namespace(doc: *const Document, node: u32
 /// null-terminated UTF-8 string.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_node_attribute(
-    doc: *const Document,
+    doc: *const Document<'static>,
     node: u32,
     name: *const c_char,
 ) -> *mut c_char {
@@ -278,7 +300,10 @@ pub unsafe extern "C" fn xmloxide_node_attribute(
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_node_attribute_count(doc: *const Document, node: u32) -> usize {
+pub unsafe extern "C" fn xmloxide_node_attribute_count(
+    doc: *const Document<'static>,
+    node: u32,
+) -> usize {
     let Some((doc, node_id)) = (unsafe { doc_and_node(doc, node) }) else {
         return 0;
     };
@@ -295,7 +320,7 @@ pub unsafe extern "C" fn xmloxide_node_attribute_count(doc: *const Document, nod
 /// `doc` must be a valid document pointer.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_node_attribute_name_at(
-    doc: *const Document,
+    doc: *const Document<'static>,
     node: u32,
     index: usize,
 ) -> *mut c_char {
@@ -319,7 +344,7 @@ pub unsafe extern "C" fn xmloxide_node_attribute_name_at(
 /// `doc` must be a valid document pointer.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_node_attribute_value_at(
-    doc: *const Document,
+    doc: *const Document<'static>,
     node: u32,
     index: usize,
 ) -> *mut c_char {
@@ -335,9 +360,9 @@ pub unsafe extern "C" fn xmloxide_node_attribute_value_at(
 
 /// Helper to safely dereference a mutable document pointer and node id.
 unsafe fn doc_and_node_mut(
-    doc: *mut Document,
+    doc: *mut Document<'static>,
     raw_node: u32,
-) -> Option<(&'static mut Document, NodeId)> {
+) -> Option<(&'static mut Document<'static>, NodeId)> {
     if doc.is_null() {
         return None;
     }
@@ -357,7 +382,10 @@ unsafe fn doc_and_node_mut(
 /// `doc` must be a valid mutable document pointer. `name` must be a valid
 /// null-terminated UTF-8 string.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_create_element(doc: *mut Document, name: *const c_char) -> u32 {
+pub unsafe extern "C" fn xmloxide_create_element(
+    doc: *mut Document<'static>,
+    name: *const c_char,
+) -> u32 {
     if doc.is_null() || name.is_null() {
         return 0;
     }
@@ -368,7 +396,7 @@ pub unsafe extern "C" fn xmloxide_create_element(doc: *mut Document, name: *cons
         return 0;
     };
     let node = doc.create_node(NodeKind::Element {
-        name: name_str.to_string(),
+        name: Cow::Owned(name_str.to_string()),
         prefix: None,
         namespace: None,
         attributes: vec![],
@@ -383,7 +411,10 @@ pub unsafe extern "C" fn xmloxide_create_element(doc: *mut Document, name: *cons
 /// `doc` must be a valid mutable document pointer. `content` must be a valid
 /// null-terminated UTF-8 string.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_create_text(doc: *mut Document, content: *const c_char) -> u32 {
+pub unsafe extern "C" fn xmloxide_create_text(
+    doc: *mut Document<'static>,
+    content: *const c_char,
+) -> u32 {
     if doc.is_null() || content.is_null() {
         return 0;
     }
@@ -394,7 +425,7 @@ pub unsafe extern "C" fn xmloxide_create_text(doc: *mut Document, content: *cons
         return 0;
     };
     let node = doc.create_node(NodeKind::Text {
-        content: text.to_string(),
+        content: Cow::Owned(text.to_string()),
     });
     node.into_raw()
 }
@@ -407,7 +438,7 @@ pub unsafe extern "C" fn xmloxide_create_text(doc: *mut Document, content: *cons
 /// null-terminated UTF-8 string.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_create_comment(
-    doc: *mut Document,
+    doc: *mut Document<'static>,
     content: *const c_char,
 ) -> u32 {
     if doc.is_null() || content.is_null() {
@@ -420,7 +451,7 @@ pub unsafe extern "C" fn xmloxide_create_comment(
         return 0;
     };
     let node = doc.create_node(NodeKind::Comment {
-        content: text.to_string(),
+        content: Cow::Owned(text.to_string()),
     });
     node.into_raw()
 }
@@ -431,7 +462,11 @@ pub unsafe extern "C" fn xmloxide_create_comment(
 ///
 /// `doc` must be a valid mutable document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_append_child(doc: *mut Document, parent: u32, child: u32) -> i32 {
+pub unsafe extern "C" fn xmloxide_append_child(
+    doc: *mut Document<'static>,
+    parent: u32,
+    child: u32,
+) -> i32 {
     let Some((doc, parent_id)) = (unsafe { doc_and_node_mut(doc, parent) }) else {
         return 0;
     };
@@ -450,7 +485,7 @@ pub unsafe extern "C" fn xmloxide_append_child(doc: *mut Document, parent: u32, 
 ///
 /// `doc` must be a valid mutable document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_remove_node(doc: *mut Document, node: u32) -> i32 {
+pub unsafe extern "C" fn xmloxide_remove_node(doc: *mut Document<'static>, node: u32) -> i32 {
     let Some((doc, node_id)) = (unsafe { doc_and_node_mut(doc, node) }) else {
         return 0;
     };
@@ -464,7 +499,11 @@ pub unsafe extern "C" fn xmloxide_remove_node(doc: *mut Document, node: u32) -> 
 ///
 /// `doc` must be a valid mutable document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_clone_node(doc: *mut Document, node: u32, deep: i32) -> u32 {
+pub unsafe extern "C" fn xmloxide_clone_node(
+    doc: *mut Document<'static>,
+    node: u32,
+    deep: i32,
+) -> u32 {
     let Some((doc, node_id)) = (unsafe { doc_and_node_mut(doc, node) }) else {
         return 0;
     };
@@ -483,7 +522,7 @@ pub unsafe extern "C" fn xmloxide_clone_node(doc: *mut Document, node: u32, deep
 /// null-terminated UTF-8 string.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_set_text_content(
-    doc: *mut Document,
+    doc: *mut Document<'static>,
     node: u32,
     content: *const c_char,
 ) -> i32 {
@@ -512,7 +551,7 @@ pub unsafe extern "C" fn xmloxide_set_text_content(
 /// be valid null-terminated UTF-8 strings.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_set_attribute(
-    doc: *mut Document,
+    doc: *mut Document<'static>,
     node: u32,
     name: *const c_char,
     value: *const c_char,
@@ -534,13 +573,13 @@ pub unsafe extern "C" fn xmloxide_set_attribute(
         return 0;
     };
     if let NodeKind::Element { attributes, .. } = &mut doc.node_mut(node_id).kind {
-        if let Some(attr) = attributes.iter_mut().find(|a| a.name == name_str) {
-            attr.value = value_str.to_string();
+        if let Some(attr) = attributes.iter_mut().find(|a| *a.name == *name_str) {
+            attr.value = Cow::Owned(value_str.to_string());
             attr.raw_value = None;
         } else {
             attributes.push(crate::tree::Attribute {
-                name: name_str.to_string(),
-                value: value_str.to_string(),
+                name: Cow::Owned(name_str.to_string()),
+                value: Cow::Owned(value_str.to_string()),
                 prefix: None,
                 namespace: None,
                 raw_value: None,
@@ -559,7 +598,7 @@ pub unsafe extern "C" fn xmloxide_set_attribute(
 /// `doc` must be a valid mutable document pointer.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_insert_before(
-    doc: *mut Document,
+    doc: *mut Document<'static>,
     reference: u32,
     new_child: u32,
 ) -> i32 {
@@ -583,7 +622,10 @@ pub unsafe extern "C" fn xmloxide_insert_before(
 /// `doc` must be a valid document pointer. `id` must be a valid
 /// null-terminated UTF-8 string.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_element_by_id(doc: *const Document, id: *const c_char) -> u32 {
+pub unsafe extern "C" fn xmloxide_element_by_id(
+    doc: *const Document<'static>,
+    id: *const c_char,
+) -> u32 {
     if doc.is_null() || id.is_null() {
         return 0;
     }
@@ -605,7 +647,10 @@ pub unsafe extern "C" fn xmloxide_element_by_id(doc: *const Document, id: *const
 ///
 /// `doc` must be a valid document pointer.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_node_prefix(doc: *const Document, node: u32) -> *mut c_char {
+pub unsafe extern "C" fn xmloxide_node_prefix(
+    doc: *const Document<'static>,
+    node: u32,
+) -> *mut c_char {
     let Some((doc, node_id)) = (unsafe { doc_and_node(doc, node) }) else {
         return std::ptr::null_mut();
     };

@@ -90,7 +90,7 @@ impl Default for C14nOptions {
 /// assert_eq!(c14n, "<root attr1=\"a\" attr2=\"b\"></root>");
 /// ```
 #[must_use]
-pub fn canonicalize(doc: &Document, options: &C14nOptions) -> String {
+pub fn canonicalize(doc: &Document<'_>, options: &C14nOptions) -> String {
     let mut ctx = C14nContext::new(doc, options);
     ctx.process_document();
     ctx.output
@@ -113,7 +113,7 @@ pub fn canonicalize(doc: &Document, options: &C14nOptions) -> String {
 /// assert_eq!(c14n, "<root><child>text</child></root>");
 /// ```
 #[must_use]
-pub fn canonicalize_subtree(doc: &Document, node: NodeId, options: &C14nOptions) -> String {
+pub fn canonicalize_subtree(doc: &Document<'_>, node: NodeId, options: &C14nOptions) -> String {
     let mut ctx = C14nContext::new(doc, options);
     ctx.process_node(node);
     ctx.output
@@ -124,7 +124,7 @@ type NsBinding = BTreeMap<String, String>;
 
 /// Internal context for C14N serialization.
 struct C14nContext<'a> {
-    doc: &'a Document,
+    doc: &'a Document<'a>,
     options: &'a C14nOptions,
     output: String,
     /// Stack of namespace bindings currently in scope.
@@ -134,7 +134,7 @@ struct C14nContext<'a> {
 }
 
 impl<'a> C14nContext<'a> {
-    fn new(doc: &'a Document, options: &'a C14nOptions) -> Self {
+    fn new(doc: &'a Document<'a>, options: &'a C14nOptions) -> Self {
         Self {
             doc,
             options,
@@ -259,7 +259,7 @@ impl<'a> C14nContext<'a> {
 
         let qname = match &prefix {
             Some(pfx) => format!("{pfx}:{name}"),
-            None => name.clone(),
+            None => name.to_string(),
         };
 
         let ns_to_output = self.compute_ns_declarations(
@@ -423,9 +423,9 @@ fn collect_inclusive_ns_decls(attributes: &[crate::tree::Attribute]) -> Vec<(Str
     let mut decls = Vec::new();
     for attr in attributes {
         if attr.prefix.as_deref() == Some("xmlns") {
-            decls.push((attr.name.clone(), attr.value.clone()));
-        } else if attr.prefix.is_none() && attr.name == "xmlns" {
-            decls.push((String::new(), attr.value.clone()));
+            decls.push((attr.name.to_string(), attr.value.to_string()));
+        } else if attr.prefix.is_none() && *attr.name == *"xmlns" {
+            decls.push((String::new(), attr.value.to_string()));
         }
     }
     decls
@@ -446,9 +446,9 @@ fn collect_exclusive_ns_decls(
     let mut all_decls: BTreeMap<String, String> = BTreeMap::new();
     for attr in attributes {
         if attr.prefix.as_deref() == Some("xmlns") {
-            all_decls.insert(attr.name.clone(), attr.value.clone());
-        } else if attr.prefix.is_none() && attr.name == "xmlns" {
-            all_decls.insert(String::new(), attr.value.clone());
+            all_decls.insert(attr.name.to_string(), attr.value.to_string());
+        } else if attr.prefix.is_none() && *attr.name == *"xmlns" {
+            all_decls.insert(String::new(), attr.value.to_string());
         }
     }
 
@@ -465,8 +465,9 @@ fn collect_exclusive_ns_decls(
             continue;
         }
         if let Some(pfx) = &attr.prefix {
-            if !utilized.contains(pfx) {
-                utilized.push(pfx.clone());
+            let pfx_str = pfx.to_string();
+            if !utilized.contains(&pfx_str) {
+                utilized.push(pfx_str);
             }
         }
     }
@@ -506,8 +507,8 @@ fn collect_exclusive_ns_decls(
         }
         if let (Some(pfx), Some(uri)) = (&attr.prefix, &attr.namespace) {
             available_bindings
-                .entry(pfx.clone())
-                .or_insert_with(|| uri.clone());
+                .entry(pfx.to_string())
+                .or_insert_with(|| uri.to_string());
         }
     }
 
@@ -589,6 +590,7 @@ fn expand_predefined_entity(name: &str) -> &str {
 mod tests {
     use super::*;
     use crate::tree::Attribute;
+    use std::borrow::Cow;
 
     /// Helper: create a document from XML and return its C14N output.
     fn c14n(xml: &str) -> String {
@@ -643,13 +645,13 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let elem = doc.create_node(NodeKind::Element {
-            name: "root".to_string(),
+            name: Cow::Owned("root".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         let text = doc.create_node(NodeKind::Text {
-            content: "a & b < c > d\re".to_string(),
+            content: Cow::Owned("a & b < c > d\re".to_string()),
         });
         doc.append_child(root, elem);
         doc.append_child(elem, text);
@@ -663,12 +665,12 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let elem = doc.create_node(NodeKind::Element {
-            name: "root".to_string(),
+            name: Cow::Owned("root".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![Attribute {
-                name: "val".to_string(),
-                value: "a&b<c\"d\te\nf\rg".to_string(),
+                name: Cow::Owned("val".to_string()),
+                value: Cow::Owned("a&b<c\"d\te\nf\rg".to_string()),
                 prefix: None,
                 namespace: None,
                 raw_value: None,
@@ -696,13 +698,13 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let elem = doc.create_node(NodeKind::Element {
-            name: "root".to_string(),
+            name: Cow::Owned("root".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
         });
         let cdata = doc.create_node(NodeKind::CData {
-            content: "x < 1 && y > 2".to_string(),
+            content: Cow::Owned("x < 1 && y > 2".to_string()),
         });
         doc.append_child(root, elem);
         doc.append_child(elem, cdata);
@@ -730,13 +732,13 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let doctype = doc.create_node(NodeKind::DocumentType {
-            name: "html".to_string(),
+            name: Cow::Owned("html".to_string()),
             system_id: None,
             public_id: None,
             internal_subset: None,
         });
         let elem = doc.create_node(NodeKind::Element {
-            name: "html".to_string(),
+            name: Cow::Owned("html".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -825,33 +827,33 @@ mod tests {
 
         // Comment before root element
         let comment_before = doc.create_node(NodeKind::Comment {
-            content: " prologue comment ".to_string(),
+            content: Cow::Owned(" prologue comment ".to_string()),
         });
         doc.append_child(root, comment_before);
 
         // PI before root element
         let pi_before = doc.create_node(NodeKind::ProcessingInstruction {
-            target: "app".to_string(),
-            data: Some("start".to_string()),
+            target: Cow::Owned("app".to_string()),
+            data: Some(Cow::Owned("start".to_string())),
         });
         doc.append_child(root, pi_before);
 
         // Root element with attributes
         let elem = doc.create_node(NodeKind::Element {
-            name: "root".to_string(),
+            name: Cow::Owned("root".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![
                 Attribute {
-                    name: "z".to_string(),
-                    value: "1".to_string(),
+                    name: Cow::Owned("z".to_string()),
+                    value: Cow::Owned("1".to_string()),
                     prefix: None,
                     namespace: None,
                     raw_value: None,
                 },
                 Attribute {
-                    name: "a".to_string(),
-                    value: "2".to_string(),
+                    name: Cow::Owned("a".to_string()),
+                    value: Cow::Owned("2".to_string()),
                     prefix: None,
                     namespace: None,
                     raw_value: None,
@@ -862,32 +864,32 @@ mod tests {
 
         // Text child
         let text = doc.create_node(NodeKind::Text {
-            content: "hello".to_string(),
+            content: Cow::Owned("hello".to_string()),
         });
         doc.append_child(elem, text);
 
         // CDATA child
         let cdata = doc.create_node(NodeKind::CData {
-            content: "a<b".to_string(),
+            content: Cow::Owned("a<b".to_string()),
         });
         doc.append_child(elem, cdata);
 
         // Comment child
         let inner_comment = doc.create_node(NodeKind::Comment {
-            content: " inner ".to_string(),
+            content: Cow::Owned(" inner ".to_string()),
         });
         doc.append_child(elem, inner_comment);
 
         // PI child
         let inner_pi = doc.create_node(NodeKind::ProcessingInstruction {
-            target: "proc".to_string(),
+            target: Cow::Owned("proc".to_string()),
             data: None,
         });
         doc.append_child(elem, inner_pi);
 
         // Comment after root element
         let comment_after = doc.create_node(NodeKind::Comment {
-            content: " epilogue ".to_string(),
+            content: Cow::Owned(" epilogue ".to_string()),
         });
         doc.append_child(root, comment_after);
 
@@ -996,13 +998,13 @@ mod tests {
         let root = doc.root();
 
         let pi = doc.create_node(NodeKind::ProcessingInstruction {
-            target: "before".to_string(),
+            target: Cow::Owned("before".to_string()),
             data: None,
         });
         doc.append_child(root, pi);
 
         let elem = doc.create_node(NodeKind::Element {
-            name: "root".to_string(),
+            name: Cow::Owned("root".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -1010,7 +1012,7 @@ mod tests {
         doc.append_child(root, elem);
 
         let pi_after = doc.create_node(NodeKind::ProcessingInstruction {
-            target: "after".to_string(),
+            target: Cow::Owned("after".to_string()),
             data: None,
         });
         doc.append_child(root, pi_after);

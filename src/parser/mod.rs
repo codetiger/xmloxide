@@ -227,7 +227,7 @@ impl ParseOptions {
 /// # Errors
 ///
 /// Returns `ParseError` if the input is not well-formed XML.
-pub fn parse_str(input: &str) -> Result<Document, ParseError> {
+pub fn parse_str(input: &str) -> Result<Document<'_>, ParseError> {
     parse_str_with_options(input, &ParseOptions::default())
 }
 
@@ -237,7 +237,10 @@ pub fn parse_str(input: &str) -> Result<Document, ParseError> {
 ///
 /// Returns `ParseError` if the input is not well-formed XML and recovery
 /// mode is not enabled.
-pub fn parse_str_with_options(input: &str, options: &ParseOptions) -> Result<Document, ParseError> {
+pub fn parse_str_with_options<'a>(
+    input: &'a str,
+    options: &ParseOptions,
+) -> Result<Document<'a>, ParseError> {
     let mut parser = xml::XmlParser::new(input, options);
     parser.parse()
 }

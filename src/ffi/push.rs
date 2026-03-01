@@ -40,7 +40,9 @@ pub unsafe extern "C" fn xmloxide_push_parser_push(
 /// Returns a document pointer on success, or null on failure.
 /// The returned document must be freed with `xmloxide_free_doc`.
 #[no_mangle]
-pub unsafe extern "C" fn xmloxide_push_parser_finish(parser: *mut PushParser) -> *mut Document {
+pub unsafe extern "C" fn xmloxide_push_parser_finish(
+    parser: *mut PushParser,
+) -> *mut Document<'static> {
     if parser.is_null() {
         set_last_error("null parser pointer");
         return std::ptr::null_mut();

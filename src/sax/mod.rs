@@ -339,7 +339,7 @@ impl<'a, 'h> SaxParser<'a, 'h> {
         let name = self.input.parse_name()?;
 
         // Parse attributes as (full_name, value) pairs first
-        let mut raw_attrs: Vec<(String, String)> = Vec::new();
+        let mut raw_attrs: Vec<(&str, String)> = Vec::new();
         loop {
             let had_ws = self.input.skip_whitespace();
             if self.input.peek() == Some(b'>') || self.input.looking_at(b"/>") {
@@ -352,14 +352,14 @@ impl<'a, 'h> SaxParser<'a, 'h> {
             self.input.skip_whitespace();
             self.input.expect_byte(b'=')?;
             self.input.skip_whitespace();
-            let attr_value = self.input.parse_attribute_value()?;
+            let attr_value = self.input.parse_attribute_value()?.into_owned();
             raw_attrs.push((attr_name, attr_value));
         }
 
         // Namespace processing: push scope and bind declarations.
         self.ns.push_scope();
         for (attr_name, attr_value) in &raw_attrs {
-            if attr_name == "xmlns" {
+            if *attr_name == "xmlns" {
                 self.ns.bind(None, attr_value.clone());
             } else if let Some(prefix) = attr_name.strip_prefix("xmlns:") {
                 self.ns.bind(Some(prefix.to_string()), attr_value.clone());
@@ -367,7 +367,7 @@ impl<'a, 'h> SaxParser<'a, 'h> {
         }
 
         // Resolve element namespace
-        let (prefix, local_name) = split_name(&name);
+        let (prefix, local_name) = split_name(name);
         let elem_ns = self.ns.resolve(prefix).map(String::from);
 
         // Build attribute tuples: (local_name, value, prefix, namespace)
@@ -541,7 +541,7 @@ impl<'a, 'h> SaxParser<'a, 'h> {
 
     fn parse_cdata(&mut self) -> Result<(), ParseError> {
         let content = parse_cdata_content(&mut self.input)?;
-        self.handler.cdata(&content);
+        self.handler.cdata(content);
         Ok(())
     }
 
@@ -550,8 +550,7 @@ impl<'a, 'h> SaxParser<'a, 'h> {
 
     fn parse_processing_instruction(&mut self) -> Result<(), ParseError> {
         let (target, data) = parse_pi_content(&mut self.input)?;
-        self.handler
-            .processing_instruction(&target, data.as_deref());
+        self.handler.processing_instruction(target, data);
         Ok(())
     }
 }

@@ -847,7 +847,7 @@ impl<'a> XmlReader<'a> {
 
         // Build the value string as "version=X encoding=Y standalone=Z".
         let mut value_parts = vec![format!("version={}", decl.version)];
-        if let Some(ref enc) = decl.encoding {
+        if let Some(enc) = decl.encoding {
             value_parts.push(format!("encoding={enc}"));
         }
         if let Some(sa) = decl.standalone {
@@ -956,7 +956,7 @@ impl<'a> XmlReader<'a> {
         self.parser_input.expect_byte(b'>')?;
 
         let mut node = ReaderNode::new(XmlNodeType::DocumentType);
-        node.local_name = name;
+        node.local_name = name.to_string();
         node.depth = 0;
         Ok(node)
     }
@@ -978,11 +978,11 @@ impl<'a> XmlReader<'a> {
                     .parser_input
                     .fatal("whitespace required between attributes"));
             }
-            let attr_name = self.parser_input.parse_name()?;
+            let attr_name = self.parser_input.parse_name()?.to_string();
             self.parser_input.skip_whitespace();
             self.parser_input.expect_byte(b'=')?;
             self.parser_input.skip_whitespace();
-            let attr_value = self.parser_input.parse_attribute_value()?;
+            let attr_value = self.parser_input.parse_attribute_value()?.into_owned();
             raw_attrs.push((attr_name, attr_value));
         }
 
@@ -997,7 +997,7 @@ impl<'a> XmlReader<'a> {
         }
 
         // Resolve element namespace.
-        let (prefix, local_name) = split_name(&name);
+        let (prefix, local_name) = split_name(name);
         let elem_ns = self.ns.resolve(prefix).map(String::from);
 
         // Build attribute list.
@@ -1048,7 +1048,7 @@ impl<'a> XmlReader<'a> {
             self.ns.pop_scope();
             self.parser_input.decrement_depth();
         } else {
-            self.element_stack.push(name);
+            self.element_stack.push(name.to_string());
             self.depth += 1;
             self.in_element_content = true;
         }
@@ -1084,7 +1084,7 @@ impl<'a> XmlReader<'a> {
         self.ns.pop_scope();
         self.in_element_content = !self.element_stack.is_empty();
 
-        let (prefix, local_name) = split_name(&name);
+        let (prefix, local_name) = split_name(name);
         let mut node = ReaderNode::new(XmlNodeType::EndElement);
         node.local_name = local_name.to_string();
         node.prefix = prefix.map(String::from);
@@ -1143,7 +1143,7 @@ impl<'a> XmlReader<'a> {
     fn parse_comment(&mut self) -> Result<ReaderNode, ParseError> {
         let content = parse_comment_content(&mut self.parser_input)?;
         let mut node = ReaderNode::new(XmlNodeType::Comment);
-        node.value = Some(content);
+        node.value = Some(content.into_owned());
         node.depth = self.depth;
         Ok(node)
     }
@@ -1151,7 +1151,7 @@ impl<'a> XmlReader<'a> {
     fn parse_cdata(&mut self) -> Result<ReaderNode, ParseError> {
         let content = parse_cdata_content(&mut self.parser_input)?;
         let mut node = ReaderNode::new(XmlNodeType::CData);
-        node.value = Some(content);
+        node.value = Some(content.to_string());
         node.depth = self.depth;
         Ok(node)
     }
@@ -1159,8 +1159,8 @@ impl<'a> XmlReader<'a> {
     fn parse_processing_instruction(&mut self) -> Result<ReaderNode, ParseError> {
         let (target, data) = parse_pi_content(&mut self.parser_input)?;
         let mut node = ReaderNode::new(XmlNodeType::ProcessingInstruction);
-        node.local_name = target;
-        node.value = data;
+        node.local_name = target.to_string();
+        node.value = data.map(String::from);
         node.depth = self.depth;
         Ok(node)
     }

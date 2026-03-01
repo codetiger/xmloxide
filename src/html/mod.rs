@@ -26,6 +26,8 @@
 
 pub mod entities;
 
+use std::borrow::Cow;
+
 use crate::error::{ErrorSeverity, ParseDiagnostic, ParseError};
 use crate::parser::input::ParserInput;
 use crate::tree::{Attribute, Document, NodeId, NodeKind};
@@ -119,7 +121,7 @@ impl HtmlParseOptions {
 /// let root = doc.root_element().unwrap();
 /// assert_eq!(doc.node_name(root), Some("html"));
 /// ```
-pub fn parse_html(input: &str) -> Result<Document, ParseError> {
+pub fn parse_html(input: &str) -> Result<Document<'_>, ParseError> {
     parse_html_with_options(input, &HtmlParseOptions::default())
 }
 
@@ -138,10 +140,10 @@ pub fn parse_html(input: &str) -> Result<Document, ParseError> {
 /// let opts = HtmlParseOptions::default().no_blanks(true);
 /// let doc = parse_html_with_options("<html><body><p>Hi</p></body></html>", &opts).unwrap();
 /// ```
-pub fn parse_html_with_options(
-    input: &str,
+pub fn parse_html_with_options<'a>(
+    input: &'a str,
     options: &HtmlParseOptions,
-) -> Result<Document, ParseError> {
+) -> Result<Document<'a>, ParseError> {
     let mut parser = HtmlParser::new(input, options);
     parser.parse()
 }
@@ -263,7 +265,7 @@ struct HtmlParser<'a> {
     /// Shared low-level input state (position, peek, advance, etc.).
     input: ParserInput<'a>,
     /// The document being built.
-    doc: Document,
+    doc: Document<'a>,
     /// Parser options.
     options: HtmlParseOptions,
     /// Stack of open element node IDs and their lowercase tag names.
@@ -287,7 +289,7 @@ impl<'a> HtmlParser<'a> {
     }
 
     /// Main parse entry point. Parses the entire HTML document.
-    fn parse(&mut self) -> Result<Document, ParseError> {
+    fn parse(&mut self) -> Result<Document<'a>, ParseError> {
         self.input.skip_whitespace();
 
         // Track whether a DOCTYPE was found in the input
@@ -316,9 +318,13 @@ impl<'a> HtmlParser<'a> {
         // Add default DOCTYPE if none was in the input and not disabled
         if !has_doctype && !self.options.no_implied {
             let doctype_id = self.doc.create_node(NodeKind::DocumentType {
-                name: "html".to_string(),
-                public_id: Some("-//W3C//DTD HTML 4.0 Transitional//EN".to_string()),
-                system_id: Some("http://www.w3.org/TR/REC-html40/loose.dtd".to_string()),
+                name: Cow::Owned("html".to_string()),
+                public_id: Some(Cow::Owned(
+                    "-//W3C//DTD HTML 4.0 Transitional//EN".to_string(),
+                )),
+                system_id: Some(Cow::Owned(
+                    "http://www.w3.org/TR/REC-html40/loose.dtd".to_string(),
+                )),
                 internal_subset: None,
             });
             // Prepend DOCTYPE before the first child of the document root
@@ -344,7 +350,7 @@ impl<'a> HtmlParser<'a> {
         }
         // Create implied html
         let html_id = self.doc.create_node(NodeKind::Element {
-            name: "html".to_string(),
+            name: Cow::Owned("html".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -366,7 +372,7 @@ impl<'a> HtmlParser<'a> {
         }
         // Create implied body
         let body_id = self.doc.create_node(NodeKind::Element {
-            name: "body".to_string(),
+            name: Cow::Owned("body".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -389,7 +395,7 @@ impl<'a> HtmlParser<'a> {
         // Create implied head. Insert before body if body exists,
         // otherwise append to html.
         let head_id = self.doc.create_node(NodeKind::Element {
-            name: "head".to_string(),
+            name: Cow::Owned("head".to_string()),
             prefix: None,
             namespace: None,
             attributes: vec![],
@@ -503,9 +509,9 @@ impl<'a> HtmlParser<'a> {
         }
 
         let doctype_id = self.doc.create_node(NodeKind::DocumentType {
-            name,
-            system_id,
-            public_id,
+            name: Cow::Owned(name),
+            system_id: system_id.map(Cow::Owned),
+            public_id: public_id.map(Cow::Owned),
             internal_subset: None,
         });
         self.doc.append_child(self.doc.root(), doctype_id);
@@ -614,7 +620,7 @@ impl<'a> HtmlParser<'a> {
         let parent = self.current_parent();
 
         let elem_id = self.doc.create_node(NodeKind::Element {
-            name: lower_tag.clone(),
+            name: Cow::Owned(lower_tag.clone()),
             prefix: None,
             namespace: None,
             attributes,
@@ -641,7 +647,7 @@ impl<'a> HtmlParser<'a> {
     }
 
     /// Merges attributes from a parsed tag into an existing element node.
-    fn merge_attributes(&mut self, elem_id: NodeId, attrs: Vec<Attribute>) {
+    fn merge_attributes(&mut self, elem_id: NodeId, attrs: Vec<Attribute<'a>>) {
         if attrs.is_empty() {
             return;
         }
@@ -745,7 +751,7 @@ impl<'a> HtmlParser<'a> {
 
     // --- Attributes ---
 
-    fn parse_attributes(&mut self) -> Vec<Attribute> {
+    fn parse_attributes(&mut self) -> Vec<Attribute<'a>> {
         let mut attributes = Vec::new();
 
         loop {
@@ -784,8 +790,8 @@ impl<'a> HtmlParser<'a> {
             };
 
             attributes.push(Attribute {
-                name: lower_name,
-                value,
+                name: Cow::Owned(lower_name),
+                value: Cow::Owned(value),
                 prefix: None,
                 namespace: None,
                 raw_value: None,
@@ -918,7 +924,9 @@ impl<'a> HtmlParser<'a> {
                 self.ensure_body();
             }
             let parent = self.current_parent();
-            let text_id = self.doc.create_node(NodeKind::Text { content: text });
+            let text_id = self.doc.create_node(NodeKind::Text {
+                content: Cow::Owned(text),
+            });
             self.doc.append_child(parent, text_id);
         }
     }
@@ -939,7 +947,9 @@ impl<'a> HtmlParser<'a> {
 
         if !content.is_empty() {
             let parent = self.current_parent();
-            let text_id = self.doc.create_node(NodeKind::Text { content });
+            let text_id = self.doc.create_node(NodeKind::Text {
+                content: Cow::Owned(content),
+            });
             self.doc.append_child(parent, text_id);
         }
 
@@ -963,7 +973,7 @@ impl<'a> HtmlParser<'a> {
             self.input.advance(1);
             let parent = self.current_parent();
             let comment_id = self.doc.create_node(NodeKind::Comment {
-                content: String::new(),
+                content: Cow::Owned(String::new()),
             });
             self.doc.append_child(parent, comment_id);
             return;
@@ -972,7 +982,7 @@ impl<'a> HtmlParser<'a> {
             self.input.advance(2);
             let parent = self.current_parent();
             let comment_id = self.doc.create_node(NodeKind::Comment {
-                content: String::new(),
+                content: Cow::Owned(String::new()),
             });
             self.doc.append_child(parent, comment_id);
             return;
@@ -1008,7 +1018,9 @@ impl<'a> HtmlParser<'a> {
         }
 
         let parent = self.current_parent();
-        let comment_id = self.doc.create_node(NodeKind::Comment { content });
+        let comment_id = self.doc.create_node(NodeKind::Comment {
+            content: Cow::Owned(content),
+        });
         self.doc.append_child(parent, comment_id);
     }
 
@@ -1040,8 +1052,8 @@ impl<'a> HtmlParser<'a> {
 
         let parent = self.current_parent();
         let pi_id = self.doc.create_node(NodeKind::ProcessingInstruction {
-            target,
-            data: pi_data,
+            target: Cow::Owned(target),
+            data: pi_data.map(Cow::Owned),
         });
         self.doc.append_child(parent, pi_id);
     }
@@ -1234,11 +1246,11 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
-    fn parse(input: &str) -> Document {
+    fn parse(input: &str) -> Document<'_> {
         parse_html(input).unwrap_or_else(|e| panic!("parse failed: {e}"))
     }
 
-    fn parse_no_implied(input: &str) -> Document {
+    fn parse_no_implied(input: &str) -> Document<'_> {
         let opts = HtmlParseOptions::default().no_implied(true);
         parse_html_with_options(input, &opts).unwrap_or_else(|e| panic!("parse failed: {e}"))
     }

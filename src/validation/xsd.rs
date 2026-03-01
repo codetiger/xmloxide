@@ -324,7 +324,7 @@ pub fn parse_xsd(schema_xml: &str) -> Result<XsdSchema, ValidationError> {
 }
 
 /// Parses top-level declarations from the schema root element.
-fn parse_top_level_declarations(doc: &Document, root: NodeId, schema: &mut XsdSchema) {
+fn parse_top_level_declarations(doc: &Document<'_>, root: NodeId, schema: &mut XsdSchema) {
     for child in doc.children(root) {
         let Some(name) = doc.node_name(child) else {
             continue;
@@ -405,7 +405,7 @@ fn register_builtin_types(schema: &mut XsdSchema) {
 }
 
 /// Parses an `<xs:element>` declaration.
-fn parse_element_decl(doc: &Document, node: NodeId) -> Option<XsdElement> {
+fn parse_element_decl(doc: &Document<'_>, node: NodeId) -> Option<XsdElement> {
     let name = doc.attribute(node, "name")?.to_string();
     let type_ref = doc.attribute(node, "type").map(strip_xs_prefix);
     let min_occurs = doc
@@ -432,7 +432,7 @@ fn parse_element_decl(doc: &Document, node: NodeId) -> Option<XsdElement> {
 }
 
 /// Looks for an inline `<xs:complexType>` or `<xs:simpleType>` child.
-fn find_inline_type(doc: &Document, node: NodeId) -> Option<XsdType> {
+fn find_inline_type(doc: &Document<'_>, node: NodeId) -> Option<XsdType> {
     for child in doc.children(node) {
         let Some(child_name) = doc.node_name(child) else {
             continue;
@@ -449,7 +449,7 @@ fn find_inline_type(doc: &Document, node: NodeId) -> Option<XsdType> {
 }
 
 /// Parses an `<xs:complexType>` element.
-fn parse_complex_type(doc: &Document, node: NodeId) -> ComplexType {
+fn parse_complex_type(doc: &Document<'_>, node: NodeId) -> ComplexType {
     let name = doc.attribute(node, "name").map(String::from);
     let mixed = doc.attribute(node, "mixed") == Some("true");
     let mut content = ComplexContent::Empty;
@@ -485,7 +485,7 @@ fn parse_complex_type(doc: &Document, node: NodeId) -> ComplexType {
 
 /// Collects attribute declarations from `<xs:simpleContent>` extension children.
 fn collect_simple_content_attributes(
-    doc: &Document,
+    doc: &Document<'_>,
     sc_node: NodeId,
     attributes: &mut Vec<XsdAttribute>,
 ) {
@@ -511,7 +511,7 @@ enum CompositorKind {
 }
 
 /// Parses a compositor (`<xs:sequence>`, `<xs:choice>`, or `<xs:all>`).
-fn parse_compositor(doc: &Document, node: NodeId, kind: CompositorKind) -> ComplexContent {
+fn parse_compositor(doc: &Document<'_>, node: NodeId, kind: CompositorKind) -> ComplexContent {
     let mut particles = Vec::new();
     for child in doc.children(node) {
         let Some(child_name) = doc.node_name(child) else {
@@ -555,7 +555,7 @@ fn parse_compositor(doc: &Document, node: NodeId, kind: CompositorKind) -> Compl
 }
 
 /// Parses `<xs:simpleContent>` within a complex type.
-fn parse_simple_content(doc: &Document, node: NodeId) -> ComplexContent {
+fn parse_simple_content(doc: &Document<'_>, node: NodeId) -> ComplexContent {
     for child in doc.children(node) {
         if matches!(doc.node_name(child), Some("extension" | "restriction")) {
             if let Some(base) = doc.attribute(child, "base") {
@@ -569,7 +569,7 @@ fn parse_simple_content(doc: &Document, node: NodeId) -> ComplexContent {
 }
 
 /// Parses an `<xs:simpleType>` element.
-fn parse_simple_type(doc: &Document, node: NodeId) -> SimpleType {
+fn parse_simple_type(doc: &Document<'_>, node: NodeId) -> SimpleType {
     let name = doc.attribute(node, "name").map(String::from);
     for child in doc.children(node) {
         let Some(child_name) = doc.node_name(child) else {
@@ -616,7 +616,7 @@ fn parse_simple_type(doc: &Document, node: NodeId) -> SimpleType {
 }
 
 /// Parses facet children from an `<xs:restriction>` element.
-fn parse_facets(doc: &Document, restriction_node: NodeId) -> Vec<Facet> {
+fn parse_facets(doc: &Document<'_>, restriction_node: NodeId) -> Vec<Facet> {
     let mut facets = Vec::new();
     let mut enumerations = Vec::new();
     for child in doc.children(restriction_node) {
@@ -676,7 +676,7 @@ fn parse_facets(doc: &Document, restriction_node: NodeId) -> Vec<Facet> {
 }
 
 /// Parses an `<xs:attribute>` declaration.
-fn parse_attribute_decl(doc: &Document, node: NodeId) -> Option<XsdAttribute> {
+fn parse_attribute_decl(doc: &Document<'_>, node: NodeId) -> Option<XsdAttribute> {
     let name = doc.attribute(node, "name")?.to_string();
     let type_ref = doc
         .attribute(node, "type")
@@ -692,7 +692,7 @@ fn parse_attribute_decl(doc: &Document, node: NodeId) -> Option<XsdAttribute> {
 }
 
 /// Parses all `<xs:attribute>` children of a given node.
-fn parse_attributes(doc: &Document, node: NodeId) -> Vec<XsdAttribute> {
+fn parse_attributes(doc: &Document<'_>, node: NodeId) -> Vec<XsdAttribute> {
     doc.children(node)
         .filter(|&c| doc.node_name(c) == Some("attribute"))
         .filter_map(|c| parse_attribute_decl(doc, c))
@@ -736,7 +736,7 @@ fn strip_xs_prefix(name: &str) -> String {
 /// let result = validate_xsd(&doc, &schema);
 /// assert!(result.is_valid);
 /// ```
-pub fn validate_xsd(doc: &Document, schema: &XsdSchema) -> ValidationResult {
+pub fn validate_xsd(doc: &Document<'_>, schema: &XsdSchema) -> ValidationResult {
     let mut errors = Vec::new();
     let Some(root) = doc.root_element() else {
         errors.push(ValidationError {
@@ -771,7 +771,7 @@ pub fn validate_xsd(doc: &Document, schema: &XsdSchema) -> ValidationResult {
 
 /// Validates a single element against its declaration.
 fn validate_element(
-    doc: &Document,
+    doc: &Document<'_>,
     node: NodeId,
     decl: &XsdElement,
     schema: &XsdSchema,
@@ -797,7 +797,7 @@ fn resolve_element_type<'a>(decl: &'a XsdElement, schema: &'a XsdSchema) -> Opti
 
 /// Validates an element with a complex type.
 fn validate_complex_element(
-    doc: &Document,
+    doc: &Document<'_>,
     node: NodeId,
     ct: &ComplexType,
     schema: &XsdSchema,
@@ -830,7 +830,7 @@ fn validate_complex_element(
 
 /// Validates empty content model constraints.
 fn validate_empty_content(
-    doc: &Document,
+    doc: &Document<'_>,
     node: NodeId,
     elem_name: &str,
     mixed: bool,
@@ -860,7 +860,7 @@ fn validate_empty_content(
 }
 
 /// Collects child element `NodeId`s.
-fn collect_child_elements(doc: &Document, node: NodeId) -> Vec<NodeId> {
+fn collect_child_elements(doc: &Document<'_>, node: NodeId) -> Vec<NodeId> {
     doc.children(node)
         .filter(|&c| matches!(doc.node(c).kind, NodeKind::Element { .. }))
         .collect()
@@ -868,7 +868,7 @@ fn collect_child_elements(doc: &Document, node: NodeId) -> Vec<NodeId> {
 
 /// Validates a sequence content model.
 fn validate_sequence(
-    doc: &Document,
+    doc: &Document<'_>,
     children: &[NodeId],
     particles: &[XsdParticle],
     parent_name: &str,
@@ -911,7 +911,7 @@ fn validate_sequence(
 
 /// Validates a single element particle in a sequence, returning number consumed.
 fn validate_sequence_element(
-    doc: &Document,
+    doc: &Document<'_>,
     children: &[NodeId],
     decl: &XsdElement,
     parent_name: &str,
@@ -949,7 +949,7 @@ fn validate_sequence_element(
 
 /// Validates a nested group content model, returning children consumed.
 fn validate_group_content(
-    doc: &Document,
+    doc: &Document<'_>,
     children: &[NodeId],
     content: &ComplexContent,
     parent_name: &str,
@@ -976,7 +976,7 @@ fn validate_group_content(
 
 /// Validates a choice content model.
 fn validate_choice(
-    doc: &Document,
+    doc: &Document<'_>,
     children: &[NodeId],
     particles: &[XsdParticle],
     parent_name: &str,
@@ -1026,7 +1026,7 @@ fn validate_choice(
 
 /// Validates an `all` content model.
 fn validate_all(
-    doc: &Document,
+    doc: &Document<'_>,
     children: &[NodeId],
     particles: &[XsdParticle],
     parent_name: &str,
@@ -1073,7 +1073,7 @@ fn validate_all(
 
 /// Validates an element with a simple type.
 fn validate_simple_element(
-    doc: &Document,
+    doc: &Document<'_>,
     node: NodeId,
     st: &SimpleType,
     schema: &XsdSchema,
@@ -1623,7 +1623,7 @@ fn validate_single_facet(
 
 /// Validates element attributes against the declared attribute list.
 fn validate_attributes(
-    doc: &Document,
+    doc: &Document<'_>,
     node: NodeId,
     declared_attrs: &[XsdAttribute],
     schema: &XsdSchema,

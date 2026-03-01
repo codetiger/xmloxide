@@ -25,7 +25,7 @@ fn test_deeply_nested_elements_rejected() {
             let open_tags: String = (0..300).map(|_| "<a>").collect();
             let close_tags: String = (0..300).map(|_| "</a>").collect();
             let xml = format!("{open_tags}{close_tags}");
-            Document::parse_str(&xml)
+            Document::parse_str(&xml).map(Document::into_static)
         })
         .unwrap()
         .join()

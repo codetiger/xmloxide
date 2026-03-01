@@ -49,7 +49,7 @@ use crate::tree::{Document, NodeId, NodeKind};
 /// ```
 pub struct XPathContext<'a> {
     /// The document being queried.
-    doc: &'a Document,
+    doc: &'a Document<'a>,
     /// The context node for expression evaluation.
     context_node: NodeId,
     /// 1-based position of the context node within its context node-set.
@@ -73,7 +73,7 @@ impl<'a> XPathContext<'a> {
     /// The context position and size are both set to 1 (as if the context
     /// node is the only member of a singleton node-set).
     #[must_use]
-    pub fn new(doc: &'a Document, context_node: NodeId) -> Self {
+    pub fn new(doc: &'a Document<'a>, context_node: NodeId) -> Self {
         Self {
             doc,
             context_node,
@@ -282,12 +282,14 @@ impl<'a> XPathContext<'a> {
                 let val = attrs
                     .iter()
                     .find(|a| a.name == *name)
-                    .map_or_else(String::new, |a| a.value.clone());
+                    .map_or_else(String::new, |a| a.value.to_string());
                 XPathValue::String(val)
             }
             NodeTest::Wildcard | NodeTest::Node => {
                 // Return the value of the first attribute
-                let val = attrs.first().map_or_else(String::new, |a| a.value.clone());
+                let val = attrs
+                    .first()
+                    .map_or_else(String::new, |a| a.value.to_string());
                 XPathValue::String(val)
             }
             _ => XPathValue::String(String::new()),
@@ -793,8 +795,8 @@ impl<'a> XPathContext<'a> {
                 } else if attr.prefix.as_deref() == Some("xmlns") {
                     // Prefixed namespace declaration: xmlns:prefix="..."
                     // The local name (attr.name) is the namespace prefix.
-                    if seen_prefixes.insert(Some(attr.name.as_str())) {
-                        ns_map.push((Some(attr.name.as_str()), &attr.value));
+                    if seen_prefixes.insert(Some(&*attr.name)) {
+                        ns_map.push((Some(&*attr.name), &attr.value));
                     }
                 }
             }
@@ -1500,11 +1502,11 @@ impl<'a> XPathContext<'a> {
             NodeKind::Document | NodeKind::Element { .. } => self.doc.text_content(node),
             NodeKind::Text { content }
             | NodeKind::CData { content }
-            | NodeKind::Comment { content } => content.clone(),
+            | NodeKind::Comment { content } => content.to_string(),
             NodeKind::ProcessingInstruction { data, .. } => {
                 data.as_deref().unwrap_or("").to_owned()
             }
-            NodeKind::EntityRef { name, .. } => name.clone(),
+            NodeKind::EntityRef { name, .. } => name.to_string(),
             NodeKind::DocumentType { .. } => String::new(),
         }
     }

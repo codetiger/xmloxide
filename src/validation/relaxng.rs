@@ -299,13 +299,13 @@ fn strip_rng_prefix(name: &str) -> &str {
 
 /// Returns the value of the `ns` attribute on an element, defaulting to
 /// the empty string.
-fn element_ns_attr(doc: &Document, node: NodeId) -> String {
+fn element_ns_attr(doc: &Document<'_>, node: NodeId) -> String {
     doc.attribute(node, "ns").unwrap_or("").to_string()
 }
 
 /// Parses a `<grammar>` element containing `<start>` and `<define>` children.
 fn parse_grammar(
-    doc: &Document,
+    doc: &Document<'_>,
     grammar_el: NodeId,
     parent_ns: &str,
 ) -> Result<RelaxNgSchema, SchemaParseError> {
@@ -352,7 +352,7 @@ fn parse_grammar(
 
 /// Resolves the effective namespace for pattern children. Uses the `ns`
 /// attribute on the current element if present, otherwise inherits.
-fn resolve_ns(doc: &Document, el: NodeId, parent_ns: &str) -> String {
+fn resolve_ns(doc: &Document<'_>, el: NodeId, parent_ns: &str) -> String {
     doc.attribute(el, "ns")
         .map_or_else(|| parent_ns.to_string(), String::from)
 }
@@ -361,7 +361,7 @@ fn resolve_ns(doc: &Document, el: NodeId, parent_ns: &str) -> String {
 /// `<group>`, `<choice>`). If there are multiple children, they are
 /// implicitly grouped.
 fn parse_pattern_children(
-    doc: &Document,
+    doc: &Document<'_>,
     container: NodeId,
     ns: &str,
 ) -> Result<Pattern, SchemaParseError> {
@@ -371,7 +371,7 @@ fn parse_pattern_children(
 
 /// Collects all child pattern elements from a container node.
 fn collect_child_patterns(
-    doc: &Document,
+    doc: &Document<'_>,
     container: NodeId,
     ns: &str,
 ) -> Result<Vec<Pattern>, SchemaParseError> {
@@ -401,7 +401,11 @@ fn combine_patterns(patterns: Vec<Pattern>) -> Result<Pattern, SchemaParseError>
 }
 
 /// Parses a single pattern element.
-fn parse_pattern(doc: &Document, el: NodeId, parent_ns: &str) -> Result<Pattern, SchemaParseError> {
+fn parse_pattern(
+    doc: &Document<'_>,
+    el: NodeId,
+    parent_ns: &str,
+) -> Result<Pattern, SchemaParseError> {
     let name = doc.node_name(el).unwrap_or("");
     let local = strip_rng_prefix(name);
     let ns = resolve_ns(doc, el, parent_ns);
@@ -473,7 +477,7 @@ fn parse_pattern(doc: &Document, el: NodeId, parent_ns: &str) -> Result<Pattern,
 
 /// Parses an `<element>` pattern, extracting the name class and content pattern.
 fn parse_element_pattern(
-    doc: &Document,
+    doc: &Document<'_>,
     el: NodeId,
     ns: &str,
 ) -> Result<Pattern, SchemaParseError> {
@@ -507,7 +511,7 @@ fn parse_element_pattern(
 
 /// Parses an `<attribute>` pattern, extracting the name class and value pattern.
 fn parse_attribute_pattern(
-    doc: &Document,
+    doc: &Document<'_>,
     el: NodeId,
     ns: &str,
 ) -> Result<Pattern, SchemaParseError> {
@@ -550,7 +554,7 @@ fn is_name_class_element(local: &str) -> bool {
 /// If the element has a `name` attribute, uses that directly. Otherwise,
 /// looks for a child `<name>`, `<anyName>`, or `<nsName>` element.
 fn parse_name_class_from_element(
-    doc: &Document,
+    doc: &Document<'_>,
     el: NodeId,
     ns: &str,
 ) -> Result<NameClass, SchemaParseError> {
@@ -599,7 +603,7 @@ fn parse_name_class_from_element(
 
 /// Parses an `<anyName>` name class, possibly with `<except>`.
 fn parse_any_name_class(
-    doc: &Document,
+    doc: &Document<'_>,
     el: NodeId,
     ns: &str,
 ) -> Result<NameClass, SchemaParseError> {
@@ -618,7 +622,7 @@ fn parse_any_name_class(
 
 /// Parses an `<nsName>` name class, possibly with `<except>`.
 fn parse_ns_name_class(
-    doc: &Document,
+    doc: &Document<'_>,
     el: NodeId,
     ns: &str,
 ) -> Result<NameClass, SchemaParseError> {
@@ -641,7 +645,7 @@ fn parse_ns_name_class(
 
 /// Parses a `<choice>` element used as a name class.
 fn parse_name_class_choice(
-    doc: &Document,
+    doc: &Document<'_>,
     el: NodeId,
     ns: &str,
 ) -> Result<NameClass, SchemaParseError> {
@@ -675,7 +679,7 @@ fn parse_name_class_choice(
 
 /// Parses name class children inside an `<except>` or similar container.
 fn parse_name_class_children(
-    doc: &Document,
+    doc: &Document<'_>,
     container: NodeId,
     ns: &str,
 ) -> Result<NameClass, SchemaParseError> {
@@ -776,7 +780,7 @@ fn combine_choice(patterns: Vec<Pattern>) -> Result<Pattern, SchemaParseError> {
 /// assert!(result.is_valid);
 /// ```
 #[must_use]
-pub fn validate(doc: &Document, schema: &RelaxNgSchema) -> ValidationResult {
+pub fn validate(doc: &Document<'_>, schema: &RelaxNgSchema) -> ValidationResult {
     let mut errors = Vec::new();
 
     let Some(root_el) = doc.root_element() else {
@@ -807,7 +811,7 @@ pub fn validate(doc: &Document, schema: &RelaxNgSchema) -> ValidationResult {
 
 /// Internal validation context — carries references to the document and schema.
 struct ValidationContext<'a> {
-    doc: &'a Document,
+    doc: &'a Document<'a>,
     defines: &'a HashMap<String, Pattern>,
 }
 
@@ -883,7 +887,7 @@ impl ValidationContext<'_> {
             name, namespace, ..
         } = node_kind
         {
-            (name.as_str(), namespace.as_deref().unwrap_or(""))
+            (&**name, namespace.as_deref().unwrap_or(""))
         } else {
             errors.push(ValidationError {
                 message: "expected element node".to_string(),

@@ -23,6 +23,7 @@
 //! allows the library to be used in any environment (filesystem, network,
 //! in-memory test fixtures, etc.).
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt;
 
@@ -150,7 +151,7 @@ pub struct XIncludeResult {
 /// assert!(result.errors.is_empty());
 /// ```
 pub fn process_xincludes<F>(
-    doc: &mut Document,
+    doc: &mut Document<'_>,
     resolver: F,
     options: &XIncludeOptions,
 ) -> XIncludeResult
@@ -189,7 +190,7 @@ struct ProcessingState {
 /// We collect the list of children first (as a `Vec<NodeId>`) to avoid
 /// borrowing issues while mutating the document.
 fn process_node<F>(
-    doc: &mut Document,
+    doc: &mut Document<'_>,
     node: NodeId,
     resolver: &F,
     state: &mut ProcessingState,
@@ -211,7 +212,7 @@ fn process_node<F>(
 }
 
 /// Checks whether a node is an `xi:include` element in the `XInclude` namespace.
-fn is_xinclude_element(doc: &Document, node: NodeId) -> bool {
+fn is_xinclude_element(doc: &Document<'_>, node: NodeId) -> bool {
     if let NodeKind::Element {
         name, namespace, ..
     } = &doc.node(node).kind
@@ -223,7 +224,7 @@ fn is_xinclude_element(doc: &Document, node: NodeId) -> bool {
 }
 
 /// Checks whether a node is an `xi:fallback` element in the `XInclude` namespace.
-fn is_fallback_element(doc: &Document, node: NodeId) -> bool {
+fn is_fallback_element(doc: &Document<'_>, node: NodeId) -> bool {
     if let NodeKind::Element {
         name, namespace, ..
     } = &doc.node(node).kind
@@ -239,7 +240,7 @@ fn is_fallback_element(doc: &Document, node: NodeId) -> bool {
 /// Reads the `href` and `parse` attributes, resolves the content via the
 /// resolver, and replaces the `xi:include` element with the result.
 fn process_include_element<F>(
-    doc: &mut Document,
+    doc: &mut Document<'_>,
     include_node: NodeId,
     resolver: &F,
     state: &mut ProcessingState,
@@ -341,7 +342,7 @@ fn process_include_element<F>(
 ///
 /// Returns `true` on success.
 fn process_xml_include<F>(
-    doc: &mut Document,
+    doc: &mut Document<'_>,
     include_node: NodeId,
     content: &str,
     resolver: &F,
@@ -407,9 +408,9 @@ where
 /// the `xi:include` element.
 ///
 /// Returns `true` on success.
-fn process_text_include(doc: &mut Document, include_node: NodeId, content: &str) -> bool {
+fn process_text_include(doc: &mut Document<'_>, include_node: NodeId, content: &str) -> bool {
     let text_node = doc.create_node(NodeKind::Text {
-        content: content.to_string(),
+        content: Cow::Owned(content.to_string()),
     });
 
     doc.insert_before(include_node, text_node);
@@ -423,7 +424,7 @@ fn process_text_include(doc: &mut Document, include_node: NodeId, content: &str)
 /// If a fallback is found, its children are moved to replace the `xi:include`
 /// element. Returns `true` if a fallback was found and applied.
 fn try_fallback<F>(
-    doc: &mut Document,
+    doc: &mut Document<'_>,
     include_node: NodeId,
     resolver: &F,
     state: &mut ProcessingState,
@@ -471,9 +472,9 @@ where
 ///
 /// This is necessary because nodes in different `Document`s live in separate
 /// arenas and cannot share `NodeId`s.
-fn deep_copy_node(target: &mut Document, source: &Document, source_id: NodeId) -> NodeId {
+fn deep_copy_node(target: &mut Document<'_>, source: &Document<'_>, source_id: NodeId) -> NodeId {
     let source_node = source.node(source_id);
-    let new_id = target.create_node(source_node.kind.clone());
+    let new_id = target.create_node(source_node.kind.clone().into_static());
 
     // Recursively copy children.
     let children: Vec<NodeId> = source.children(source_id).collect();
@@ -506,7 +507,7 @@ mod tests {
 
     // Helper: parse XML, process XIncludes with the given resolver, return the
     // document and result.
-    fn process_with_resolver<F>(xml: &str, resolver: F) -> (Document, XIncludeResult)
+    fn process_with_resolver<F>(xml: &str, resolver: F) -> (Document<'_>, XIncludeResult)
     where
         F: Fn(&str) -> Option<String>,
     {
@@ -516,7 +517,7 @@ mod tests {
     }
 
     // Helper: serialize the document to a string for comparison.
-    fn doc_text_content(doc: &Document) -> String {
+    fn doc_text_content(doc: &Document<'_>) -> String {
         let root_elem = doc.root_element().unwrap();
         doc.text_content(root_elem)
     }

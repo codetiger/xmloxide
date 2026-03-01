@@ -73,7 +73,7 @@ pub unsafe extern "C" fn xmloxide_free_dtd(dtd: *mut Dtd) {
 /// `doc` must be a valid mutable document pointer. `dtd` must be a valid DTD pointer.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_validate_dtd(
-    doc: *mut Document,
+    doc: *mut Document<'static>,
     dtd: *const Dtd,
 ) -> *mut ValidationResult {
     clear_last_error();
@@ -145,7 +145,7 @@ pub unsafe extern "C" fn xmloxide_free_relaxng(schema: *mut RelaxNgSchema) {
 /// `doc` must be a valid document pointer. `schema` must be a valid `RelaxNG` schema pointer.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_validate_relaxng(
-    doc: *const Document,
+    doc: *const Document<'static>,
     schema: *const RelaxNgSchema,
 ) -> *mut ValidationResult {
     clear_last_error();
@@ -217,7 +217,7 @@ pub unsafe extern "C" fn xmloxide_free_xsd(schema: *mut XsdSchema) {
 /// `doc` must be a valid document pointer. `schema` must be a valid XSD schema pointer.
 #[no_mangle]
 pub unsafe extern "C" fn xmloxide_validate_xsd(
-    doc: *const Document,
+    doc: *const Document<'static>,
     schema: *const XsdSchema,
 ) -> *mut ValidationResult {
     clear_last_error();

@@ -696,7 +696,7 @@ fn normalize_public_id(public_id: &str) -> String {
 /// per the catalog specification). Returns `Err` if a recognized element
 /// is missing required attributes.
 fn parse_catalog_entry(
-    doc: &Document,
+    doc: &Document<'_>,
     node: crate::NodeId,
     name: &str,
 ) -> Result<Option<CatalogEntry>, CatalogError> {
@@ -765,7 +765,7 @@ fn parse_catalog_entry(
 /// Extracts a required attribute from an element, returning a `CatalogError`
 /// if the attribute is missing.
 fn require_attr(
-    doc: &Document,
+    doc: &Document<'_>,
     node: crate::NodeId,
     attr_name: &str,
     element_name: &str,

@@ -51,7 +51,7 @@ fn main() {
             let sku = attributes
                 .iter()
                 .find(|a| a.name == "sku")
-                .map_or("?", |a| a.value.as_str());
+                .map_or("?", |a| &*a.value);
             print!("  <{name} sku=\"{sku}\">");
 
             for field in doc.children(child) {

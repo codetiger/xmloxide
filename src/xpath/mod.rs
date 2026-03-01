@@ -70,7 +70,7 @@ use crate::tree::{Document, NodeId};
 ///
 /// Returns [`XPathError`] if the expression is malformed or evaluation fails.
 pub fn evaluate(
-    doc: &Document,
+    doc: &Document<'_>,
     context_node: NodeId,
     expression: &str,
 ) -> Result<XPathValue, XPathError> {
