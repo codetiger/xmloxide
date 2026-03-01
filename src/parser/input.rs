@@ -1791,8 +1791,7 @@ pub(crate) fn parse_comment_content<'a>(
     match input.scan_for_2byte_terminator(b'-', b'-') {
         Some(safe_len) => {
             let start = input.pos();
-            let has_bad =
-                may_contain_invalid_xml_chars(input.slice_input(start, start + safe_len));
+            let has_bad = may_contain_invalid_xml_chars(input.slice_input(start, start + safe_len));
             let chunk = input.str_slice(start, start + safe_len);
             if has_bad {
                 if let Some(bad) = find_invalid_xml_char(chunk) {
@@ -1890,9 +1889,7 @@ pub(crate) fn parse_cdata_content<'a>(input: &mut ParserInput<'a>) -> Result<&'a
     match input.scan_for_3byte_terminator(b']', b']', b'>') {
         Some(safe_len) => {
             let start = input.pos();
-            let has_bad = may_contain_invalid_xml_chars(
-                input.slice_input(start, start + safe_len),
-            );
+            let has_bad = may_contain_invalid_xml_chars(input.slice_input(start, start + safe_len));
             let content = input.str_slice(start, start + safe_len);
             if has_bad {
                 if let Some(bad) = find_invalid_xml_char(content) {
@@ -1942,9 +1939,8 @@ pub(crate) fn parse_pi_content<'a>(
         match input.scan_for_2byte_terminator(b'?', b'>') {
             Some(data_len) => {
                 let start = input.pos();
-                let has_bad = may_contain_invalid_xml_chars(
-                    input.slice_input(start, start + data_len),
-                );
+                let has_bad =
+                    may_contain_invalid_xml_chars(input.slice_input(start, start + data_len));
                 let data = input.str_slice(start, start + data_len);
                 if has_bad {
                     if let Some(bad) = find_invalid_xml_char(data) {
