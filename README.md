@@ -144,36 +144,36 @@ xmllint --html page.html
 
 ## Performance
 
-Parsing throughput is competitive with libxml2 — within 3-4% on most documents, and **12% faster** on SVG. Serialization is **1.5-2.4x faster** thanks to the arena-based tree design. XPath is **1.1-2.7x faster** across all benchmarks.
+Parsing is **20-48% faster** than libxml2 across all benchmarks thanks to zero-copy `Cow<str>` parsing, bulk text scanning, and ASCII fast paths. Serialization is **1.5-2.4x faster** thanks to the arena-based tree design. XPath is **1.1-3.0x faster** across all benchmarks.
 
 **Parsing:**
 
 | Document | Size | xmloxide | libxml2 | Result |
 |----------|------|----------|---------|--------|
-| Atom feed | 4.9 KB | 26.7 µs (176 MiB/s) | 25.5 µs (184 MiB/s) | ~4% slower |
-| SVG drawing | 6.3 KB | 58.5 µs (103 MiB/s) | 65.6 µs (92 MiB/s) | **12% faster** |
-| Maven POM | 11.5 KB | 76.9 µs (142 MiB/s) | 74.2 µs (148 MiB/s) | ~4% slower |
-| XHTML page | 10.2 KB | 69.5 µs (139 MiB/s) | 61.5 µs (157 MiB/s) | ~13% slower |
-| Large (374 KB) | 374 KB | 2.15 ms (169 MiB/s) | 2.08 ms (175 MiB/s) | ~3% slower |
+| Atom feed | 4.9 KB | 17.0 µs (276 MiB/s) | 22.5 µs (209 MiB/s) | **25% faster** |
+| SVG drawing | 6.3 KB | 30.1 µs (200 MiB/s) | 57.9 µs (104 MiB/s) | **48% faster** |
+| Maven POM | 11.5 KB | 45.1 µs (243 MiB/s) | 65.5 µs (167 MiB/s) | **31% faster** |
+| XHTML page | 10.2 KB | 43.4 µs (223 MiB/s) | 54.1 µs (179 MiB/s) | **20% faster** |
+| Large (374 KB) | 374 KB | 1.16 ms (313 MiB/s) | 1.82 ms (200 MiB/s) | **36% faster** |
 
 **Serialization:**
 
 | Document | Size | xmloxide | libxml2 | Result |
 |----------|------|----------|---------|--------|
-| Atom feed | 4.9 KB | 11.3 µs | 17.5 µs | **1.5x faster** |
-| Maven POM | 11.5 KB | 20.1 µs | 47.5 µs | **2.4x faster** |
-| Large (374 KB) | 374 KB | 614 µs | 1397 µs | **2.3x faster** |
+| Atom feed | 4.9 KB | 10.0 µs | 15.6 µs | **1.5x faster** |
+| Maven POM | 11.5 KB | 17.8 µs | 42.4 µs | **2.4x faster** |
+| Large (374 KB) | 374 KB | 556 µs | 1327 µs | **2.4x faster** |
 
 **XPath:**
 
 | Expression | xmloxide | libxml2 | Result |
 |------------|----------|---------|--------|
-| Simple path (`//entry/title`) | 1.51 µs | 1.63 µs | **8% faster** |
-| Attribute predicate (`//book[@id]`) | 5.91 µs | 15.99 µs | **2.7x faster** |
-| `count()` function | 1.09 µs | 1.67 µs | **1.5x faster** |
-| `string()` function | 1.32 µs | 1.77 µs | **1.3x faster** |
+| Simple path (`//entry/title`) | 1.30 µs | 1.45 µs | **11% faster** |
+| Attribute predicate (`//book[@id]`) | 4.94 µs | 14.6 µs | **3.0x faster** |
+| `count()` function | 949 ns | 1.51 µs | **1.6x faster** |
+| `string()` function | 1.13 µs | 1.61 µs | **1.4x faster** |
 
-Key optimizations: arena-based tree for fast serialization, byte-level pre-checks for character validation, bulk text scanning, ASCII fast paths for name parsing, zero-copy element name splitting, inline entity resolution, XPath `//` step fusion with fused axis expansion, inlined tree accessors, and name-test fast paths for child/descendant axes.
+Key optimizations: zero-copy `Cow<str>` parsing with `from_utf8` elimination, arena-based tree for fast serialization, byte-level pre-checks for character validation, bulk text scanning, ASCII fast paths for name parsing, zero-copy element name splitting, inline entity resolution, XPath `//` step fusion with fused axis expansion, inlined tree accessors, and name-test fast paths for child/descendant axes.
 
 ```sh
 # Run benchmarks (requires libxml2 system library)
